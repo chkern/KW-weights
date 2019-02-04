@@ -1,6 +1,8 @@
 # Setup
+library(ggplot2)
+library(gridExtra)
 library(survey)
-library(tableone)
+library(cobalt)
 library(ranger)
 library(partykit)
 library(gbm)
@@ -34,14 +36,13 @@ psa_dat$race_f <- as.factor(psa_dat$race)
 psa_dat$martl_f <- as.factor(psa_dat$martl)
 psa_dat$smk1_f <- as.factor(psa_dat$smk1)
 cols <- ncol(model.matrix(trt_f ~ age+sex_f+race_f+martl_f+educ+bmi+smk1_f+phys+health, data = psa_dat))
-covars <- c("age", "sex", "race", "martl", "educ", "bmi", "smk1", "phys", "health")
-catcovars <- c("sex", "race", "martl")
+covars <- c("age", "sex_f", "race_f", "martl_f", "educ", "bmi", "smk1_f", "phys", "health")
 
 # Covariate balance before adjustment
-ds <- svydesign(ids = ~1, weight = ~ wt, data = psa_dat)
-tab_pre_adjust <- svyCreateTableOne(vars = covars, factorVars = catcovars, strata = "trt", data = ds, test = FALSE)
-tab_pre_adjust_smd <- rbind(attr(tab_pre_adjust$ContTable, "smd"), attr(tab_pre_adjust$CatTable, "smd"))
-summary(tab_pre_adjust_smd)
+tab_pre_adjust <- bal.tab(psa_dat[, covars], treat = psa_dat$trt, weights = psa_dat$wt, s.d.denom = "pooled", binary = "std", 
+                          int = TRUE, 
+                          poly = 2)
+summary(abs(tab_pre_adjust$Balance[, "Diff.Adj"]))
 
 ###########################################################################
 #### Calculate propensity scores and pseudo weights based on logistic regression
@@ -104,13 +105,13 @@ for (i in seq_along(tune_maxdepth)) {
   p_score_c[, i] <- p_scores[psa_dat$trt == 1, i]
   p_score_s[, i] <- p_scores[psa_dat$trt == 0, i]
   # Calculate KW weights
-  aarp_syn$kw <- kw.wt(p_score.c = p_score_c[,i], p_score.s = p_score_s[,i], svy.wt = nhis_m$elig_wt, Large=T)$pswt
+  aarp_syn$kw <- kw.wt(p_score.c = p_score_c[,i], p_score.s = p_score_s[,i], svy.wt = nhis_m$elig_wt, Large = T)$pswt
   # Calculate covariate balance
   psa_dat$wt_kw[psa_dat$trt == 1] <- aarp_syn$kw
-  ds_kw <- svydesign(ids = ~1, weight = ~ wt_kw, data = psa_dat)
-  tab_post_adjust <- svyCreateTableOne(vars = covars, factorVars = catcovars, strata = "trt", data = ds_kw, test = FALSE)
-  tab_post_adjust_smd <- rbind(attr(tab_post_adjust$ContTable, "smd"), attr(tab_post_adjust$CatTable, "smd"))
-  smds[i] <- mean(tab_post_adjust_smd)
+  tab_post_adjust <- bal.tab(psa_dat[, covars], treat = psa_dat$trt, weights = psa_dat$wt_kw, s.d.denom = "pooled", binary = "std", 
+                             int = TRUE, 
+                             poly = 2)
+  smds[i] <- mean(abs(tab_post_adjust$Balance[, "Diff.Adj"]))
   names(aarp_syn)[dim(aarp_syn)[2]] <- paste0("kw.", "mob.", i, collapse = "")
 }
 
@@ -144,13 +145,13 @@ for (i in seq_along(tune_mtry)) {
   p_score_c[, i] <- p_scores[psa_dat$trt == 1, i]
   p_score_s[, i] <- p_scores[psa_dat$trt == 0, i]
   # Calculate KW weights
-  aarp_syn$kw <- kw.wt(p_score.c = p_score_c[,i], p_score.s = p_score_s[,i], svy.wt = nhis_m$elig_wt, Large=T)$pswt
+  aarp_syn$kw <- kw.wt(p_score.c = p_score_c[,i], p_score.s = p_score_s[,i], svy.wt = nhis_m$elig_wt, Large = T)$pswt
   # Calculate covariate balance
   psa_dat$wt_kw[psa_dat$trt == 1] <- aarp_syn$kw
-  ds_kw <- svydesign(ids = ~1, weight = ~ wt_kw, data = psa_dat)
-  tab_post_adjust <- svyCreateTableOne(vars = covars, factorVars = catcovars, strata = "trt", data = ds_kw, test = FALSE)
-  tab_post_adjust_smd <- rbind(attr(tab_post_adjust$ContTable, "smd"), attr(tab_post_adjust$CatTable, "smd"))
-  smds[i] <- mean(tab_post_adjust_smd)
+  tab_post_adjust <- bal.tab(psa_dat[, covars], treat = psa_dat$trt, weights = psa_dat$wt_kw, s.d.denom = "pooled", binary = "std", 
+                             int = TRUE, 
+                             poly = 2)
+  smds[i] <- mean(abs(tab_post_adjust$Balance[, "Diff.Adj"]))
   names(aarp_syn)[dim(aarp_syn)[2]] <- paste0("kw.", "rf.", i, collapse = "")
 }
 
@@ -185,13 +186,13 @@ for (i in seq_along(tune_mtry)) {
   p_score_c[, i] <- p_scores[psa_dat$trt == 1, i]
   p_score_s[, i] <- p_scores[psa_dat$trt == 0, i]
   # Calculate KW weights
-  aarp_syn$kw <- kw.wt(p_score.c = p_score_c[,i], p_score.s = p_score_s[,i], svy.wt = nhis_m$elig_wt, Large=T)$pswt
+  aarp_syn$kw <- kw.wt(p_score.c = p_score_c[,i], p_score.s = p_score_s[,i], svy.wt = nhis_m$elig_wt, Large = T)$pswt
   # Calculate covariate balance
   psa_dat$wt_kw[psa_dat$trt == 1] <- aarp_syn$kw
-  ds_kw <- svydesign(ids = ~1, weight = ~ wt_kw, data = psa_dat)
-  tab_post_adjust <- svyCreateTableOne(vars = covars, factorVars = catcovars, strata = "trt", data = ds_kw, test = FALSE)
-  tab_post_adjust_smd <- rbind(attr(tab_post_adjust$ContTable, "smd"), attr(tab_post_adjust$CatTable, "smd"))
-  smds[i] <- mean(tab_post_adjust_smd)
+  tab_post_adjust <- bal.tab(psa_dat[, covars], treat = psa_dat$trt, weights = psa_dat$wt_kw, s.d.denom = "pooled", binary = "std", 
+                             int = TRUE, 
+                             poly = 2)
+  smds[i] <- mean(abs(tab_post_adjust$Balance[, "Diff.Adj"]))
   names(aarp_syn)[dim(aarp_syn)[2]] <- paste0("kw.", "xtree.", i, collapse = "")
 }
 
@@ -219,19 +220,19 @@ for (i in seq_along(tune_ntree)) {
              n.trees = ntree,
              interaction.depth = 3,
              shrinkage = 0.05,
-             bag.fraction = 0.5,
+             bag.fraction = 1,
              verbose = TRUE)
   p_scores[, i] <- predict(boost, psa_dat, n.trees = ntree, type = "response")
   p_score_c[, i] <- p_scores[psa_dat$trt == 1, i]
   p_score_s[, i] <- p_scores[psa_dat$trt == 0, i]
   # Calculate KW weights
-  aarp_syn$kw <- kw.wt(p_score.c = p_score_c[,i], p_score.s = p_score_s[,i], svy.wt = nhis_m$elig_wt, Large=T)$pswt
+  aarp_syn$kw <- kw.wt(p_score.c = p_score_c[,i], p_score.s = p_score_s[,i], svy.wt = nhis_m$elig_wt, Large = T)$pswt
   # Calculate covariate balance
   psa_dat$wt_kw[psa_dat$trt == 1] <- aarp_syn$kw
-  ds_kw <- svydesign(ids = ~1, weight = ~ wt_kw, data = psa_dat)
-  tab_post_adjust <- svyCreateTableOne(vars = covars, factorVars = catcovars, strata = "trt", data = ds_kw, test = FALSE)
-  tab_post_adjust_smd <- rbind(attr(tab_post_adjust$ContTable, "smd"), attr(tab_post_adjust$CatTable, "smd"))
-  smds[i] <- mean(tab_post_adjust_smd)
+  tab_post_adjust <- bal.tab(psa_dat[, covars], treat = psa_dat$trt, weights = psa_dat$wt_kw, s.d.denom = "pooled", binary = "std", 
+                             int = TRUE, 
+                             poly = 2)
+  smds[i] <- mean(abs(tab_post_adjust$Balance[, "Diff.Adj"]))
   names(aarp_syn)[dim(aarp_syn)[2]] <- paste0("kw.", "gbm.", i, collapse = "")
 }
 
@@ -287,15 +288,27 @@ for(i in 1:n_p2){
 #### Compare balance and weighted estimates
   
 # Covariate balance after adjustment (KW)
-tab_post_adjust_smd <- data.frame(matrix(ncol = n_p2, nrow = length(covars)))
+psa_dat$educ_f <- as.factor(psa_dat$educ)
+psa_dat$health_f <- as.factor(psa_dat$health)
+covars2 <- c("age", "sex_f", "race_f", "martl_f", "educ_f", "bmi", "smk1_f", "phys", "health_f")
+p <- list()
+tab_post_adjust_smd <- data.frame(matrix(ncol = n_p2, nrow = 19))
 for(i in 1:n_p2){
   psa_dat$wt_kw <- psa_dat$wt
   psa_dat$wt_kw[psa_dat$trt == 1] <- eval(parse(text = paste0("aarp_syn$kw.", i)))
-  ds_kw <- svydesign(ids = ~1, weight = ~ wt_kw, data = psa_dat)
-  tab_post_adjust <- svyCreateTableOne(vars = covars, factorVars = catcovars, strata = "trt", data = ds_kw, test = FALSE)
-  tab_post_adjust_smd[,i] <- rbind(attr(tab_post_adjust$ContTable, "smd"), attr(tab_post_adjust$CatTable, "smd"))
-}
+  tab_post_adjust <- bal.tab(psa_dat[, covars], treat = psa_dat$trt, weights = psa_dat$wt_kw, s.d.denom = "pooled", binary = "std")
+  tab_post_adjust_smd[, i] <- abs(tab_post_adjust$Balance[, "Diff.Adj"])
+    for(var in covars2){
+    p[[paste0(i, var)]] <- bal.plot(psa_dat[, covars2], treat = psa_dat$trt, weights = psa_dat$wt_kw, var.name = var) +
+                           labs(title = "", subtitle = "")
+    }
+  }
 summary(tab_post_adjust_smd)
+# p1 <- grid.arrange(grobs = p[c("1age", "1sex_f", "1race_f", "1martl_f", "1educ_f", "1bmi", "1smk1_f", "1phys", "1health_f")], top = "Distributional Balance: KW with logit regression")
+# p2 <- grid.arrange(grobs = p[c("2age", "2sex_f", "2race_f", "2martl_f", "2educ_f", "2bmi", "2smk1_f", "2phys", "2health_f")], top = "Distributional Balance: KW with MOB")
+# p3 <- grid.arrange(grobs = p[c("3age", "3sex_f", "3race_f", "3martl_f", "3educ_f", "3bmi", "3smk1_f", "3phys", "3health_f")], top = "Distributional Balance: KW with RF")
+# p4 <- grid.arrange(grobs = p[c("4age", "4sex_f", "4race_f", "4martl_f", "4educ_f", "4bmi", "4smk1_f", "4phys", "4health_f")], top = "Distributional Balance: KW with XTREE")
+# p5 <- grid.arrange(grobs = p[c("5age", "5sex_f", "5race_f", "5martl_f", "5educ_f", "5bmi", "5smk1_f", "5phys", "5health_f")], top = "Distributional Balance: KW with GBM")
 
 # Naive cohort estimate 
 est.cht=mean(aarp_syn$mtlty)*100
