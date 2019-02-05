@@ -110,8 +110,7 @@ repeat {
   aarp_syn$kw <- kw.wt(p_score.c = p_score_c, p_score.s = p_score_s, svy.wt = nhis_m$elig_wt, Large = T)$pswt
   # Calculate covariate balance
   psa_dat$wt_kw[psa_dat$trt == 1] <- aarp_syn$kw
-  tab_post_adjust <- bal.tab(psa_dat[, covars], treat = psa_dat$trt, weights = psa_dat$wt_kw, s.d.denom = "pooled", binary = "std")
-  smds[i+1] <- mean(abs(tab_post_adjust$Balance[, "Diff.Adj"]))
+  smds[i+1] <- mean(abs(bal.tab(psa_dat[, covars], treat = psa_dat$trt, weights = psa_dat$wt_kw, s.d.denom = "pooled", binary = "std")$Balance[, "Diff.Adj"]))
   # Save KW weights of current iteration 
   names(aarp_syn)[dim(aarp_syn)[2]] <- paste0("kw.mob.", i)
   # Check improvement in covariate balance
@@ -153,8 +152,7 @@ for (i in seq_along(tune_mtry)) {
   aarp_syn$kw <- kw.wt(p_score.c = p_score_c, p_score.s = p_score_s, svy.wt = nhis_m$elig_wt, Large = T)$pswt
   # Calculate covariate balance
   psa_dat$wt_kw[psa_dat$trt == 1] <- aarp_syn$kw
-  tab_post_adjust <- bal.tab(psa_dat[, covars], treat = psa_dat$trt, weights = psa_dat$wt_kw, s.d.denom = "pooled", binary = "std")
-  smds[i] <- mean(abs(tab_post_adjust$Balance[, "Diff.Adj"]))
+  smds[i] <- mean(abs(bal.tab(psa_dat[, covars], treat = psa_dat$trt, weights = psa_dat$wt_kw, s.d.denom = "pooled", binary = "std")$Balance[, "Diff.Adj"]))
   # Save KW weights of current iteration
   names(aarp_syn)[dim(aarp_syn)[2]] <- paste0("kw.rf.", i)
 }
@@ -194,8 +192,7 @@ for (i in seq_along(tune_mtry)) {
   aarp_syn$kw <- kw.wt(p_score.c = p_score_c, p_score.s = p_score_s, svy.wt = nhis_m$elig_wt, Large = T)$pswt
   # Calculate covariate balance
   psa_dat$wt_kw[psa_dat$trt == 1] <- aarp_syn$kw
-  tab_post_adjust <- bal.tab(psa_dat[, covars], treat = psa_dat$trt, weights = psa_dat$wt_kw, s.d.denom = "pooled", binary = "std")
-  smds[i] <- mean(abs(tab_post_adjust$Balance[, "Diff.Adj"]))
+  smds[i] <- mean(abs(bal.tab(psa_dat[, covars], treat = psa_dat$trt, weights = psa_dat$wt_kw, s.d.denom = "pooled", binary = "std")$Balance[, "Diff.Adj"]))
   # Save KW weights of current iteration 
   names(aarp_syn)[dim(aarp_syn)[2]] <- paste0("kw.xtree.", i)
 }
@@ -243,8 +240,7 @@ for (i in seq_along(tune_idepth)) {
     aarp_syn$kw <- kw.wt(p_score.c = p_score_c, p_score.s = p_score_s, svy.wt = nhis_m$elig_wt, Large = T)$pswt
     # Calculate covariate balance
     psa_dat$wt_kw[psa_dat$trt == 1] <- aarp_syn$kw
-    tab_post_adjust <- bal.tab(psa_dat[, covars], treat = psa_dat$trt, weights = psa_dat$wt_kw, s.d.denom = "pooled", binary = "std")
-    smds_i[j+1] <- mean(abs(tab_post_adjust$Balance[, "Diff.Adj"]))
+    smds_i[j+1] <- mean(abs(bal.tab(psa_dat[, covars], treat = psa_dat$trt, weights = psa_dat$wt_kw, s.d.denom = "pooled", binary = "std")$Balance[, "Diff.Adj"]))
     # Save KW weights of current iteration 
     names(aarp_syn)[dim(aarp_syn)[2]] <- paste0("kw.gbm.i", j)
     # Check improvement in covariate balance
