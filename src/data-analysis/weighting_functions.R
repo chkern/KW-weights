@@ -34,20 +34,22 @@ psas.wt = function(p_score.c, p_score.s, svy.wt, nclass){
 	p_score.q = quantile(p_score, prob = seq(0, 1, length = (nclass+1)))
 	p_score.q.u = unique(p_score.q)
 	nclass = length(p_score.q.u)-1  
-	subclass = cut(p_score, breaks = p_score.q.u, include.lowest = T)  
-    levels(subclass) = c(1: nclass)
-    nclass.c = length(unique(subclass[trt==1]))
-    nclass.s = length(unique(subclass[trt==0]))
-	  while (nclass.c!= nclass.s){
+	subclass = cut(p_score, breaks = p_score.q.u, include.lowest = TRUE)  
+  levels(subclass) = c(1: nclass)
+  nclass.c = length(unique(subclass[trt==1]))
+  nclass.s = length(unique(subclass[trt==0]))
+	 while (nclass.c!= nclass.s){
     nclass = min(nclass.c, nclass.s)
     p_score.q = quantile(p_score, prob = seq(0, 1, length = (nclass+1)))
     p_score.q.u = unique(p_score.q)
     nclass = length(p_score.q.u)-1  
-    subclass = cut(p_score, breaks = p_score.q.u, include.lowest = T)  
+    subclass = cut(p_score, breaks = p_score.q.u, include.lowest = TRUE)  
     levels(subclass) = c(1: nclass)
     nclass.c = length(unique(subclass[trt==1]))
     nclass.s = length(unique(subclass[trt==0]))
-  }
+	 }
+  p_score_dat = data.frame(id = c(1:m), subclass = subclass[trt==1])
+  p_score_dat = p_score_dat[order(p_score_dat$subclass),]
   # Assign pseudo weights to the cohort units
   svy_N = aggregate(svy.wt, by=list(subclass[trt==0]), FUN = sum)[,2]
   cht_n = aggregate(rep(1, m), by=list(subclass[trt==1]), FUN = sum)[,2]
@@ -55,7 +57,9 @@ psas.wt = function(p_score.c, p_score.s, svy.wt, nclass){
   if(nclass<nclass0) warning("Empty cells were combined with the neighbor cells.")
   wt_f  = svy_N/cht_n
   pswt = rep(wt_f, cht_n)
-  return(list(pswt = pswt, nclass = nclass))
+  p_score_dat$pswt = rep(wt_f, cht_n)
+  p_score_dat = p_score_dat[order(p_score_dat$id),]
+  return(list(pswt = p_score_dat$pswt, nclass = nclass))
 }
 
 ###################################################################################################
