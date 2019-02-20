@@ -6,11 +6,14 @@ library(ranger)
 library(partykit)
 library(gbm)
 
-#setwd("/Users/lingxiaowang/Google Drive/Machine learning methods for KW weights/Simulations")
-setwd("C:/Users/wangl29/Google Drive/Machine learning methods for KW weights/Simulations")
+setwd("/Users/lingxiaowang/Google Drive/Machine learning methods for KW weights/Simulations")
+#setwd("C:/Users/wangl29/Google Drive/Machine learning methods for KW weights/Simulations")
+#setwd("/home/wangl29/retrosp")
 # Load R functions for pseudo weights calculation
 source("weighting_functions.R")
 source("subfunctions.R")
+#seed1 = seednumber1[,1]
+#seed2 = seednumber1[,1]
 seeds = read.table("seed.txt", header = T)
 seed1 = seeds[, 1]
 seed2 = seeds[, 2]
@@ -34,7 +37,7 @@ alpha = c(-2.5, 1, 1, 1, 1, .71, -.19, .26)
 n.alpha = length(alpha)
 odds_y = exp(as.matrix(cbind(1, pop[,c(1:4, 8:10)]))%*%matrix(alpha, n.alpha, 1))
 py = odds_y/(1+odds_y)
-pop$y=as.numeric((runif(N)<py))
+pop$y=as.numeric((runif(N)<py)); pop$y
 pop$w2_2 = pop$w2^2
 pop$w4_2 = pop$w4^2
 pop$w7_2 = pop$w7^2
@@ -81,7 +84,7 @@ est = array(0, c(NSIMU, 11, 7),
 
 wt_m = est
 wt_v = est
-for (k in 1:7){
+for (k in 5:7){
   for(simu in 1:NSIMU){
     samp.c = samp.slct(seed = seed1[simu], 
 	                     fnt.pop = pop, 
@@ -138,7 +141,7 @@ for (k in 1:7){
     }
 
 	  # Kernel weighting method
-    kw = as.data.frame(matrix(0, n_c, 6))
+      kw = as.data.frame(matrix(0, n_c, 6))
 	  #True propensity score model
 	  svyds = svydesign(ids =~1, weight = rep(1, n_c+n_s), data = psa_dat)
 	  lgtreg = svyglm(as.formula(Formulas[k]), family = binomial, design = svyds)
@@ -147,11 +150,11 @@ for (k in 1:7){
 	  p_score.c = p_score[psa_dat[,rsp_name]==1]
 	  # Propensity scores for the survey sample
 	  p_score.s = p_score[psa_dat[,rsp_name]==0]
-    kw[,1] = kw.wt(p_score.c = p_score.c, p_score.s = p_score.s, 
-                   svy.wt= samp.s$wt, Large=F)$pswt
+      kw[,1] = kw.wt(p_score.c = p_score.c, p_score.s = p_score.s, 
+                     svy.wt= samp.s$wt, Large=F)$pswt
 	  wt_m[simu,6, k] = mean(kw[,1])
 	  wt_v[simu,6, k] = var(kw[,1])                      
-    est[simu, 6, k] = sum(samp.c$y*kw[,1])/sum(kw[,1])
+      est[simu, 6, k] = sum(samp.c$y*kw[,1])/sum(kw[,1])
 	  
 	  #Fitted propensity score model (main effects only)
 	  svyds = svydesign(ids =~1, weight = rep(1, n_c+n_s), data = psa_dat)
@@ -162,11 +165,11 @@ for (k in 1:7){
 	  # Propensity scores for the survey sample
 	  p_score.s = cbind(p_score.s, p_score[psa_dat[,rsp_name]==0])
   
-    kw[,2] = kw.wt(p_score.c = p_score.c[,2], p_score.s = p_score.s[,2], 
-                  svy.wt= samp.s$wt, Large=F)$pswt
+      kw[,2] = kw.wt(p_score.c = p_score.c[,2], p_score.s = p_score.s[,2], 
+                    svy.wt= samp.s$wt, Large=F)$pswt
 	  wt_m[simu,7, k] = mean(kw[,2])
 	  wt_v[simu,7, k] = var(kw[,2])                      
-    est[simu, 7, k] = sum(samp.c$y*kw[, 2])/sum(kw[, 2])
+      est[simu, 7, k] = sum(samp.c$y*kw[, 2])/sum(kw[, 2])
 	  
 	  cols <- ncol(model.matrix(trt~w1+w2+w3+w4+w5+w6+w7, data = psa_dat))
 	  
@@ -180,27 +183,27 @@ for (k in 1:7){
 	  smds <- rep(NA, length(tune_maxdepth))
 	  # Loop over try-out values
 	  for (i in seq_along(tune_maxdepth)) {
-	    maxdepth <- tune_maxdepth[i]
-		  mob <- glmtree(trt~w1+w2+w3+w4+w5+w6+w7| w1+w2+w3+w4+w5+w6+w7, 
-		                 data = psa_dat,
-		                 family = binomial,
-		                 alpha = 0.01,
-		                 minsplit = 1000,
-		                 maxdepth = maxdepth,
-		                 prune = "AIC")
+	  	maxdepth <- tune_maxdepth[i]
+		mob <- glmtree(trt~w1+w2+w3+w4+w5+w6+w7| w1+w2+w3+w4+w5+w6+w7, 
+		               data = psa_dat,
+		               family = binomial,
+		               alpha = 0.01,
+		               minsplit = 1000,
+		               maxdepth = maxdepth,
+		               prune = "AIC")
 	    p_scores.tmp[, i]  <- predict(mob, psa_dat, type = "response")
-		  p_score_c.tmp[, i] <- p_scores.tmp[psa_dat$trt == 1, i]
-		  p_score_s.tmp[, i] <- p_scores.tmp[psa_dat$trt == 0, i]
-		  # Calculate KW weights
-		  samp.c$kw <- kw.wt(p_score.c = p_score_c.tmp[,i], p_score.s = p_score_s.tmp[,i], 
-		                     svy.wt = samp.s$wt, Large=F)$pswt
-		  # Calculate covariate balance
-		  psa_dat$wt_kw[psa_dat$trt == 1] <- samp.c$kw
-		  ds_kw <- svydesign(ids = ~1, weight = ~ wt_kw, data = psa_dat)
-		  tab_post_adjust <- svyCreateTableOne(vars = covars, strata = "trt", data = ds_kw, test = FALSE)
-		  tab_post_adjust_smd <- rbind(attr(tab_post_adjust$ContTable, "smd"), attr(tab_post_adjust$CatTable, "smd"))
-		  smds[i] <- mean(tab_post_adjust_smd)
-		  names(samp.c)[dim(samp.c)[2]] <- paste0("kw.", "mob.", i, collapse = "")
+		p_score_c.tmp[, i] <- p_scores.tmp[psa_dat$trt == 1, i]
+		p_score_s.tmp[, i] <- p_scores.tmp[psa_dat$trt == 0, i]
+		# Calculate KW weights
+		samp.c$kw <- kw.wt(p_score.c = p_score_c.tmp[,i], p_score.s = p_score_s.tmp[,i], 
+		                   svy.wt = samp.s$wt, Large=F)$pswt
+		# Calculate covariate balance
+		psa_dat$wt_kw[psa_dat$trt == 1] <- samp.c$kw
+		ds_kw <- svydesign(ids = ~1, weight = ~ wt_kw, data = psa_dat)
+		tab_post_adjust <- svyCreateTableOne(vars = covars, strata = "trt", data = ds_kw, test = FALSE)
+		tab_post_adjust_smd <- rbind(attr(tab_post_adjust$ContTable, "smd"), attr(tab_post_adjust$CatTable, "smd"))
+		smds[i] <- mean(tab_post_adjust_smd)
+		names(samp.c)[dim(samp.c)[2]] <- paste0("kw.", "mob.", i, collapse = "")
 	  }
 	  # Select KW weights with best average covariate balance
 	  best <- which.min(smds)
@@ -232,28 +235,28 @@ for (k in 1:7){
                    min.node.size = 15,
                    write.forest = T,
                    probability = T)
-      p_scores.tmp[, i]  <- predict(rf, psa_dat, type = "response")$predictions[, 2]
-      p_score_c.tmp[, i] <- p_scores.tmp[psa_dat$trt == 1, i]
-      p_score_s.tmp[, i] <- p_scores.tmp[psa_dat$trt == 0, i]
-      # Calculate KW weights
-      samp.c$kw <- kw.wt(p_score.c = p_score_c.tmp[,i], p_score.s = p_score_s.tmp[,i], 
-                         svy.wt = samp.s$wt, Large=F)$pswt
-      # Calculate covariate balance
-      psa_dat$wt_kw[psa_dat$trt == 1] <- samp.c$kw
-      ds_kw <- svydesign(ids = ~1, weight = ~ wt_kw, data = psa_dat)
-      tab_post_adjust <- svyCreateTableOne(vars = covars, strata = "trt", data = ds_kw, test = FALSE)
-      tab_post_adjust_smd <- rbind(attr(tab_post_adjust$ContTable, "smd"), attr(tab_post_adjust$CatTable, "smd"))
-      smds[i] <- mean(tab_post_adjust_smd)
-      names(samp.c)[dim(samp.c)[2]] <- paste0("kw.", "rf.", i, collapse = "")
+          p_scores.tmp[, i]  <- predict(rf, psa_dat, type = "response")$predictions[, 2]
+          p_score_c.tmp[, i] <- p_scores.tmp[psa_dat$trt == 1, i]
+          p_score_s.tmp[, i] <- p_scores.tmp[psa_dat$trt == 0, i]
+          # Calculate KW weights
+          samp.c$kw <- kw.wt(p_score.c = p_score_c.tmp[,i], p_score.s = p_score_s.tmp[,i], 
+                             svy.wt = samp.s$wt, Large=F)$pswt
+          # Calculate covariate balance
+          psa_dat$wt_kw[psa_dat$trt == 1] <- samp.c$kw
+          ds_kw <- svydesign(ids = ~1, weight = ~ wt_kw, data = psa_dat)
+          tab_post_adjust <- svyCreateTableOne(vars = covars, strata = "trt", data = ds_kw, test = FALSE)
+          tab_post_adjust_smd <- rbind(attr(tab_post_adjust$ContTable, "smd"), attr(tab_post_adjust$CatTable, "smd"))
+          smds[i] <- mean(tab_post_adjust_smd)
+          names(samp.c)[dim(samp.c)[2]] <- paste0("kw.", "rf.", i, collapse = "")
     }
     # Select KW weights with best average covariate balance
     best <- which.min(smds)
-	  p_score.c = cbind(p_score.c, p_score_c.tmp[, best])
-	  p_score.s = cbind(p_score.s, p_score_s.tmp[, best])	
-	  kw[, 4] = samp.c[,names(samp.c) == paste0("kw.", "rf.", best, collapse = "")]
-	  wt_m[simu,9, k] = mean(kw[,4])
-	  wt_v[simu,9, k] = var(kw[,4])                      
-	  est[simu, 9, k] = sum(samp.c$y*kw[, 4])/sum(kw[, 4])
+	p_score.c = cbind(p_score.c, p_score_c.tmp[, best])
+	p_score.s = cbind(p_score.s, p_score_s.tmp[, best])	
+	kw[, 4] = samp.c[,names(samp.c) == paste0("kw.", "rf.", best, collapse = "")]
+	wt_m[simu,9, k] = mean(kw[,4])
+	wt_v[simu,9, k] = var(kw[,4])                      
+	est[simu, 9, k] = sum(samp.c$y*kw[, 4])/sum(kw[, 4])
     #names(samp.c)[names(samp.c) == paste0("kw.", "rf.", best, collapse = "")] <- "kw.4"
     samp.c[, grep("kw.rf", names(samp.c))] <- NULL
     
@@ -268,15 +271,15 @@ for (k in 1:7){
     # Loop over try-out values
     for (i in seq_along(tune_mtry)){ 
       mtry <- tune_mtry[i]
-    	xtree <- ranger(trt_n~w1+w2+w3+w4+w5+w6+w7,
-                    data = psa_dat,
-                    splitrule = "extratrees",
-                    num.random.splits = 1,
-                    num.trees = 500,
-                    mtry = mtry,
-                    min.node.size = 15,
-                    write.forest = T,
-                    probability = T)
+      xtree <- ranger(trt_n~w1+w2+w3+w4+w5+w6+w7,
+                      data = psa_dat,
+                      splitrule = "extratrees",
+                      num.random.splits = 1,
+                      num.trees = 500,
+                      mtry = mtry,
+                      min.node.size = 15,
+                      write.forest = T,
+                      probability = T)
       p_scores.tmp[, i]  <- predict(xtree, psa_dat, type = "response")$predictions[, 2]
       p_score_c.tmp[, i] <- p_scores.tmp[psa_dat$trt == 1, i]
       p_score_s.tmp[, i] <- p_scores.tmp[psa_dat$trt == 0, i]
@@ -293,12 +296,12 @@ for (k in 1:7){
     }
     # Select KW weights with best average covariate balance
     best <- which.min(smds)
-	  p_score.c = cbind(p_score.c, p_score_c.tmp[, best])
-	  p_score.s = cbind(p_score.s, p_score_s.tmp[, best])	
-	  kw[, 5] = samp.c[,names(samp.c) == paste0("kw.", "xtree.", best, collapse = "")]
-	  wt_m[simu,10, k] = mean(kw[,5])
-	  wt_v[simu,10, k] = var(kw[,5])                      
-	  est[simu, 10, k] = sum(samp.c$y*kw[, 5])/sum(kw[, 5])
+	p_score.c = cbind(p_score.c, p_score_c.tmp[, best])
+	p_score.s = cbind(p_score.s, p_score_s.tmp[, best])	
+	kw[, 5] = samp.c[,names(samp.c) == paste0("kw.", "xtree.", best, collapse = "")]
+	wt_m[simu,10, k] = mean(kw[,5])
+	wt_v[simu,10, k] = var(kw[,5])                      
+	est[simu, 10, k] = sum(samp.c$y*kw[, 5])/sum(kw[, 5])
     #names(samp.c)[names(samp.c) == paste0("kw.", "xtree.", best, collapse = "")] <- "kw.5"
     samp.c[, grep("kw.xtree", names(samp.c))] <- NULL
     
@@ -360,12 +363,12 @@ for (k in 1:7){
     }
     # Select KW weights with best average covariate balance
     best <- which.min(smds_o)
-	  p_score.c = cbind(p_score.c, p_score_o_c[, best])
-	  p_score.s = cbind(p_score.s, p_score_o_s[, best])	
-	  kw[, 6] = samp.c[,names(samp.c) == paste0("kw.gbm.o", best, collapse = "")]
-	  wt_m[simu,11, k] = mean(kw[,6])
-	  wt_v[simu,11, k] = var(kw[,6])                      
-	  est[simu, 11, k] = sum(samp.c$y*kw[, 6])/sum(kw[, 6])
+	p_score.c = cbind(p_score.c, p_score_o_c[, best])
+	p_score.s = cbind(p_score.s, p_score_o_s[, best])	
+	kw[, 6] = samp.c[,names(samp.c) == paste0("kw.gbm.o", best, collapse = "")]
+	wt_m[simu,11, k] = mean(kw[,6])
+	wt_v[simu,11, k] = var(kw[,6])                      
+	est[simu, 11, k] = sum(samp.c$y*kw[, 6])/sum(kw[, 6])
     #names(samp.c)[names(samp.c) == paste0("kw.gbm.o", best)] <- "kw.6"
     samp.c[, grep("kw.gbm.o", names(samp.c))] <- NULL    
     print(simu)
@@ -373,5 +376,16 @@ for (k in 1:7){
   print(paste0("model", k))
 }
 
+
 for(k in 1:7) print(apply((sqrt(wt_v)/wt_m)[,,k], 2, mean))
 for(k in 1:7) print((apply(est[,,k], 2, mean)-mean(pop$y))/mean(pop$y)*100)
+for(k in 1:7) print(apply(est[,,k], 2, var)*1e4)
+
+save(wt_v, file = "wt_v.rda")
+save(wt_m, file = "wt_m.rda")
+save(est, file = "est.rda")
+
+write.table(as.data.frame.table(wt_v), "wt_v.txt", append = T, row.names = F, col.names = F)
+write.table(as.data.frame.table(wt_m), "wt_m.txt", append = T, row.names = F, col.names = F)
+write.table(as.data.frame.table(est) , "est.txt" , append = T, row.names = F, col.names = F)
+
