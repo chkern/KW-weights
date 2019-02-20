@@ -120,10 +120,10 @@ repeat {
 }
 
 # Select KW weights with best average covariate balance
-names(aarp_syn)[names(aarp_syn) == paste0("kw.mob.", i-1)] <- "kw.2"
+names(aarp_syn)[names(aarp_syn) == paste0("kw.mob.", ifelse(i == 1, i, i-1))] <- "kw.2"
 aarp_syn[, grep("kw.mob", names(aarp_syn))] <- NULL
 # Save propensity scores
-psa_dat$ps.2 <- p_scores[, i-1]
+psa_dat$ps.2 <- p_scores[, ifelse(i == 1, i, i-1)]
 
 #### Random Forest (RF)
 
@@ -248,10 +248,10 @@ for (i in seq_along(tune_idepth)) {
       break
     }
   }
-  names(aarp_syn)[names(aarp_syn) == paste0("kw.gbm.i", j-1)] <- paste0("kw.gbm.o", i)
+  names(aarp_syn)[names(aarp_syn) == paste0("kw.gbm.i", ifelse(j == 1, j, j-1))] <- paste0("kw.gbm.o", i)
   aarp_syn[, grep("kw.gbm.i", names(aarp_syn))] <- NULL
-  p_scores_o[i] <- p_scores_i[, j-1]
-  smds_o[i] <- smds_i[j]
+  p_scores_o[i] <- p_scores_i[, ifelse(j == 1, j, j-1)]
+  smds_o[i] <- smds_i[ifelse(j == 1, j+1, j)]
 }
 
 # Select KW weights with best average covariate balance
