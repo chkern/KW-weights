@@ -4,6 +4,7 @@ library(cobalt)
 library(ranger)
 library(partykit)
 library(gbm)
+library(mboost)
 
 setwd("/Users/lingxiaowang/Google Drive/Machine learning methods for KW weights/Simulations")
 #setwd("C:/Users/wangl29/Google Drive/Machine learning methods for KW weights/Simulations")
@@ -75,15 +76,15 @@ Formulas = c("trt~w1+w2+w3+w4+w5+w6+w7",
 NSIMU=1000
 n_c = 1000
 n_s = 1000
-est = array(0, c(NSIMU, 11, 7),
+est = array(0, c(NSIMU, 12, 7),
             dimnames = list(c(1:NSIMU), c("Naive", "wtd chrt", "wtd svy", "IPSW(true)", "IPSW(main)", "KW (true)", 
-                                          "KW(main)", "KW (MOB)", "KW (RF)", "KW (XTree)", "KW (GBM)"),
+                                          "KW(main)", "KW (MOB)", "KW (RF)", "KW (XTree)", "KW (GBM)", "KW (mboost)"),
                             paste0(rep("model", 7), c(1:7), sep=""))
 )
 
 wt_m = est
 wt_v = est
-for (k in 5:7){
+for (k in 1:7){
   for(simu in 1:NSIMU){
     samp.c = samp.slct(seed = seed1[simu], 
 	                     fnt.pop = pop, 
@@ -140,7 +141,7 @@ for (k in 5:7){
     }
 
 	  # Kernel weighting method
-      kw = as.data.frame(matrix(0, n_c, 6))
+      kw = as.data.frame(matrix(0, n_c, 7))
 	  #True propensity score model
 	  svyds = svydesign(ids =~1, weight = rep(1, n_c+n_s), data = psa_dat)
 	  lgtreg = svyglm(as.formula(Formulas[k]), family = binomial, design = svyds)
@@ -370,7 +371,76 @@ for (k in 5:7){
 	  wt_v[simu,11, k] = var(kw[,6])                      
 	  est[simu, 11, k] = sum(samp.c$y*kw[, 6])/sum(kw[, 6])
     #names(samp.c)[names(samp.c) == paste0("kw.gbm.o", best)] <- "kw.6"
-    samp.c[, grep("kw.gbm.o", names(samp.c))] <- NULL    
+    samp.c[, grep("kw.gbm.o", names(samp.c))] <- NULL
+    
+    # Model-based Boosting (mboost)
+    # Set try-out values and prepare loop
+    psa_dat[, c("w1c","w2c","w3c","w4c","w5c","w6c","w7c")] <- lapply(psa_dat[, c("w1","w2","w3","w4","w5","w6","w7")], 
+                                                                      scale, scale = F)
+    psa_dat$int = rep(1, length(psa_dat$trt))
+    tune_mstop <- c(50, 100, 250, 500)
+    p_scores.tmp <- data.frame(matrix(ncol = length(tune_mstop), nrow = nrow(psa_dat)))
+    p_score_c.tmp <- data.frame(matrix(ncol = length(tune_mstop), nrow = n_c))
+    p_score_s.tmp <- data.frame(matrix(ncol = length(tune_mstop), nrow = n_s))
+    smds <- rep(NA, length(tune_mstop)+1)
+    smds[1] <- mean(abs(tab_pre_adjust$Balance[, "Diff.Adj"]))
+    i <- 0
+    # Loop over try-out values
+    repeat {
+      i <- i+1
+      # Run model
+      mstop <- tune_mstop[i]
+      mboost <- gamboost(trt ~ bols(int, intercept = FALSE) +
+                         bols(w1c, intercept = FALSE) + bols(w2c, intercept = FALSE) +
+                         bols(w3c, intercept = FALSE) + bols(w4c, intercept = FALSE) +
+                         bols(w5c, intercept = FALSE) + bols(w6c, intercept = FALSE) +
+                         bols(w7c, intercept = FALSE) +
+                         bbs(w1c, center = TRUE, df = 1, knots = 20) + bbs(w2c, center = TRUE, df = 1, knots = 20) +
+                         bbs(w3c, center = TRUE, df = 1, knots = 20) + bbs(w4c, center = TRUE, df = 1, knots = 20) +
+                         bbs(w5c, center = TRUE, df = 1, knots = 20) + bbs(w6c, center = TRUE, df = 1, knots = 20) +
+                         bbs(w7c, center = TRUE, df = 1, knots = 20) +
+                         bols(w1c, by = w2c, intercept = FALSE) + bols(w1c, by = w3c, intercept = FALSE) +
+                         bols(w1c, by = w4c, intercept = FALSE) + bols(w1c, by = w5c, intercept = FALSE) +
+                         bols(w1c, by = w6c, intercept = FALSE) + bols(w1c, by = w7c, intercept = FALSE) +
+                         bols(w2c, by = w3c, intercept = FALSE) + bols(w2c, by = w4c, intercept = FALSE) +
+                         bols(w2c, by = w5c, intercept = FALSE) + bols(w2c, by = w6c, intercept = FALSE) +
+                         bols(w2c, by = w7c, intercept = FALSE) +
+                         bols(w3c, by = w4c, intercept = FALSE) + bols(w3c, by = w5c, intercept = FALSE) +
+                         bols(w3c, by = w6c, intercept = FALSE) + bols(w3c, by = w7c, intercept = FALSE) +
+                         bols(w4c, by = w5c, intercept = FALSE) + bols(w4c, by = w6c, intercept = FALSE) +
+                         bols(w4c, by = w7c, intercept = FALSE) +
+                         bols(w5c, by = w6c, intercept = FALSE) + bols(w5c, by = w7c, intercept = FALSE) +
+                         bols(w6c, by = w7c, intercept = FALSE),
+               control = boost_control(mstop = mstop, 
+                                       nu = 0.1),
+               family = Binomial(link = "logit"),
+               data = psa_dat)
+      p_scores.tmp[, i] <- as.numeric(predict(mboost, psa_dat, type = "response"))
+      p_score_c.tmp[, i] <- p_scores.tmp[psa_dat$trt == 1, i]
+      p_score_s.tmp[, i] <- p_scores.tmp[psa_dat$trt == 0, i]
+      # Calculate KW weights
+      samp.c$kw <- kw.wt(p_score.c = p_score_c.tmp[,i], p_score.s = p_score_s.tmp[,i], 
+                         svy.wt = samp.s$wt, Large=F)$pswt
+      # Calculate covariate balance
+      psa_dat$wt_kw[psa_dat$trt == 1] <- samp.c$kw
+      smds[i+1] <- mean(abs(bal.tab(psa_dat[, covars], treat = psa_dat$trt, weights = psa_dat$wt_kw, 
+                                    s.d.denom = "pooled", binary = "std", method = "weighting")$Balance[, "Diff.Adj"]))
+      # Save KW weights of current iteration 
+      names(samp.c)[dim(samp.c)[2]] <- paste0("kw.mboost.", i)
+      # Check improvement in covariate balance
+      if (smds[i] - smds[i+1] < 0.001 | length(tune_mstop) == i){
+        break
+      }
+    }
+    # Select KW weights with best average covariate balance
+    p_score.c = cbind(p_score.c, p_score_c.tmp[, ifelse(i == 1, i, i-1)])
+    p_score.s = cbind(p_score.s, p_score_s.tmp[, ifelse(i == 1, i, i-1)])
+    kw[, 7] = samp.c[,names(samp.c) == paste0("kw.mboost.", ifelse(i == 1, i, i-1))]
+    wt_m[simu,12, k] = mean(kw[,7])
+    wt_v[simu,12, k] = var(kw[,7])                      
+    est[simu, 12, k] = sum(samp.c$y*kw[, 7])/sum(kw[, 7])
+    samp.c[, grep("kw.mboost", names(samp.c))] <- NULL
+    
     print(simu)
   }
   print(paste0("model", k))

@@ -6,6 +6,7 @@ library(cobalt)
 library(ranger)
 library(partykit)
 library(gbm)
+library(mboost)
 
 # Set directory
 setwd("C:/Users/wangl29/Box/Research/Lingxiao Projects/Machine learning methods/Nonprobability weighting")
@@ -261,6 +262,83 @@ aarp_syn[, grep("kw.gbm.o", names(aarp_syn))] <- NULL
 # Save propensity scores
 psa_dat$ps.5 <- p_scores_o[, best]
 
+#### Model-based Boosting (mboost)
+
+# Set try-out values and prepare loop
+psa_dat[, c("age_c", "educ_c", "bmi_c", "phys_c", "health_c")] <- lapply(psa_dat[, c("age", "educ", "bmi", "phys", "health")], 
+                                                                  scale, scale = F)
+covars <- c("age_c", "sex_f", "race_f", "martl_f", "educ_c", "bmi_c", "smk1_f", "phys_c", "health_c")
+
+psa_dat$wt_kw <- psa_dat$wt
+psa_dat$int = rep(1, length(psa_dat$trt))
+tune_mstop <- c(50, 100, 250, 500)
+p_scores <- data.frame(matrix(ncol = length(tune_mstop), nrow = nrow(psa_dat)))
+smds <- rep(NA, length(tune_mstop)+1)
+smds[1] <- mean(abs(tab_pre_adjust$Balance[, "Diff.Adj"]))
+i <- 0
+
+# Loop over try-out values
+repeat {
+  i <- i+1
+  print(i)
+  # Run model
+  mstop <- tune_mstop[i]
+  mboost <- gamboost(trt_f ~ bols(int, intercept = FALSE) +
+                     bols(age_c, intercept = FALSE) + bols(sex_f, intercept = FALSE) +
+                     bols(race_f, intercept = FALSE) + bols(martl_f, intercept = FALSE) +
+                     bols(educ_c, intercept = FALSE) + bols(bmi_c, intercept = FALSE) +
+                     bols(smk1_f, intercept = FALSE) + bols(phys_c, intercept = FALSE) +
+                     bols(health_c, intercept = FALSE) +
+                     bbs(age_c, center = TRUE, df = 1, knots = 20) + bbs(educ_c, center = TRUE, df = 1, knots = 20) + 
+                     bbs(bmi_c, center = TRUE, df = 1, knots = 20) + bbs(phys_c, center = TRUE, df = 1, knots = 20) + 
+                     bbs(health_c, center = TRUE, df = 1, knots = 20) +
+                     bols(age_c, by = sex_f, intercept = FALSE) + bols(age_c, by = race_f, intercept = FALSE) +
+                     bols(age_c, by = martl_f, intercept = FALSE) + bols(age_c, by = educ_c, intercept = FALSE) +
+                     bols(age_c, by = bmi_c, intercept = FALSE) + bols(age_c, by = smk1_f, intercept = FALSE) +
+                     bols(age_c, by = phys_c, intercept = FALSE) + bols(age_c, by = health_c, intercept = FALSE) +
+                     bols(sex_f, by = race_f, intercept = FALSE) + bols(sex_f, by = martl_f, intercept = FALSE) +
+                     bols(sex_f, by = educ_c, intercept = FALSE) + bols(sex_f, by = bmi_c, intercept = FALSE) +
+                     bols(sex_f, by = smk1_f, intercept = FALSE) + bols(sex_f, by = phys_c, intercept = FALSE) +
+                     bols(sex_f, by = health_c, intercept = FALSE) +
+                     bols(race_f, by = martl_f, intercept = FALSE) + bols(race_f, by = educ_c, intercept = FALSE) +
+                     bols(race_f, by = bmi_c, intercept = FALSE) + bols(race_f, by = smk1_f, intercept = FALSE) +
+                     bols(race_f, by = phys_c, intercept = FALSE) + bols(race_f, by = health_c, intercept = FALSE) +
+                     bols(martl_f, by = educ_c, intercept = FALSE) + bols(martl_f, by = bmi_c, intercept = FALSE) +
+                     bols(martl_f, by = smk1_f, intercept = FALSE) + bols(martl_f, by = phys_c, intercept = FALSE) + 
+                     bols(martl_f, by = health_c, intercept = FALSE) + 
+                     bols(educ_c, by = bmi_c, intercept = FALSE) + bols(educ_c, by = smk1_f, intercept = FALSE) +
+                     bols(educ_c, by = phys_c, intercept = FALSE) + bols(educ_c, by = health_c, intercept = FALSE) +
+                     bols(bmi_c, by = smk1_f, intercept = FALSE) + bols(bmi_c, by = phys_c, intercept = FALSE) +
+                     bols(bmi_c, by = health_c, intercept = FALSE) +
+                     bols(smk1_f, by = phys_c, intercept = FALSE) + bols(smk1_f, by = health_c, intercept = FALSE) +
+                     bols(phys_c, by = health_c, intercept = FALSE),
+                     control = boost_control(mstop = mstop, 
+                                             nu = 0.1),
+                     family = Binomial(link = "logit"),
+                     data = psa_dat)
+  p_scores[, i] <- as.numeric(predict(mboost, psa_dat, type = "response"))
+  p_score_c <- p_scores[psa_dat$trt == 1, i]
+  p_score_s <- p_scores[psa_dat$trt == 0, i]
+  # Calculate KW weights
+  aarp_syn$kw <- kw.wt(p_score.c = p_score_c, p_score.s = p_score_s, svy.wt = nhis_m$elig_wt, Large = T)$pswt
+  # Calculate covariate balance
+  psa_dat$wt_kw[psa_dat$trt == 1] <- aarp_syn$kw
+  smds[i+1] <- mean(abs(bal.tab(psa_dat[, covars], treat = psa_dat$trt, weights = psa_dat$wt_kw, 
+                                s.d.denom = "pooled", binary = "std", method = "weighting")$Balance[, "Diff.Adj"]))
+  # Save KW weights of current iteration 
+  names(aarp_syn)[dim(aarp_syn)[2]] <- paste0("kw.mboost.", i)
+  # Check improvement in covariate balance
+  if (smds[i] - smds[i+1] < 0.001 | length(tune_mstop) == i){
+    break
+  }
+}
+
+# Select KW weights with best average covariate balance
+names(aarp_syn)[names(aarp_syn) == paste0("kw.mboost.", ifelse(i == 1, i, i-1))] <- "kw.6"
+aarp_syn[, grep("kw.mboost", names(aarp_syn))] <- NULL
+# Save propensity scores
+psa_dat$ps.6 <- p_scores[, ifelse(i == 1, i, i-1)]
+
 ###########################################################################
 #### Calcute weighted estimates 
 
@@ -315,13 +393,13 @@ est=rbind(est.cht, est)
 rel.diff = t((t(est)-est_nhis)/est_nhis*100)
 colnames(rel.diff)=c("Overall", "50-54", "55-59", "60-64", "64+")
 # Please change the row names (weighting method)
-rownames(rel.diff)= c("NIH-AARP", "IPSW", "PSAS", "KW-Logit", "KW-MOB", "KW-RF", "KW-XTREE", "KW-GBM")
+rownames(rel.diff)= c("NIH-AARP", "IPSW", "PSAS", "KW-Logit", "KW-MOB", "KW-RF", "KW-XTREE", "KW-GBM", "KW-mboost")
 round(rel.diff, 3)
 # bias reduction%
 bias.r = t((rel.diff[1,]-t(rel.diff))/rel.diff[1,])*100
 colnames(bias.r)=c("Overall", "50-54", "55-59", "60-64", "64+")
 # Please change the row names (weighting method)
-rownames(bias.r)= c("NIH-AARP", "IPSW", "PSAS", "KW-Logit", "KW-MOB", "KW-RF", "KW-XTREE", "KW-GBM")
+rownames(bias.r)= c("NIH-AARP", "IPSW", "PSAS", "KW-Logit", "KW-MOB", "KW-RF", "KW-XTREE", "KW-GBM", "KW-mboost")
 round(bias.r, 3)
 
 # Covariate balance before and after adjustment (KW)
@@ -362,7 +440,8 @@ p2 <- grid.arrange(grobs = p_vars[c("2age", "2sex_f", "2race_f", "2martl_f", "2e
 p3 <- grid.arrange(grobs = p_vars[c("3age", "3sex_f", "3race_f", "3martl_f", "3educ_f", "3bmi", "3smk1_f", "3phys", "3health_f")], top = "Distributional Balance: KW with RF")
 p4 <- grid.arrange(grobs = p_vars[c("4age", "4sex_f", "4race_f", "4martl_f", "4educ_f", "4bmi", "4smk1_f", "4phys", "4health_f")], top = "Distributional Balance: KW with XTREE")
 p5 <- grid.arrange(grobs = p_vars[c("5age", "5sex_f", "5race_f", "5martl_f", "5educ_f", "5bmi", "5smk1_f", "5phys", "5health_f")], top = "Distributional Balance: KW with GBM")
+p6 <- grid.arrange(grobs = p_vars[c("6age", "6sex_f", "6race_f", "6martl_f", "6educ_f", "6bmi", "6smk1_f", "6phys", "6health_f")], top = "Distributional Balance: KW with mboost")
 
 # Propensity score plots (KW)
-p6 <- grid.arrange(grobs = p_ps_u, top = "Distribution of propensity scores: Weighted NHIS, unweighted AARP")
-p7 <- grid.arrange(grobs = p_ps_w, top = "Distribution of propensity scores: Weighted NHIS, KW-weighted AARP")
+p7 <- grid.arrange(grobs = p_ps_u, top = "Distribution of propensity scores: Weighted NHIS, unweighted AARP")
+p8 <- grid.arrange(grobs = p_ps_w, top = "Distribution of propensity scores: Weighted NHIS, KW-weighted AARP")
