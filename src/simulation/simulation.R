@@ -88,7 +88,7 @@ n_c = 5000
 n_s = 5000
 est = array(0, c(NSIMU, 12, 7)#,
             #dimnames = list(c(1:NSIMU), c("Naive", "wtd chrt", "wtd svy", "IPSW(true)", "IPSW(main)", "KW (true)", 
-            #                              "KW(main)", "KW (MOB)", "KW (RF)", "KW (XTree)", "KW (GBM)"),
+            #                              "KW(main)", "KW (MOB)", "KW (RF)", "KW (CRF)", "KW (GBM)"),
             #                paste0(rep("model", 7), c(1:7), sep=""))
 )
 
@@ -152,6 +152,7 @@ for (k in 1:7){
 
 	  # Kernel weighting method
     kw = as.data.frame(matrix(0, n_c, 7))
+    
     ###########################################################################
     ##                      True propensity score model                      ##                    
     ###########################################################################
@@ -187,10 +188,11 @@ for (k in 1:7){
 	  
 	  cols <- ncol(model.matrix(trt~w1+w2+w3+w4+w5+w6+w7, data = psa_dat))
 	  dim(kw)
+	  
 	  ###########################################################################
 	  ##                Model-based recursive partitioning (MOB)               ##
 	  ###########################################################################
-	  # Set try-out values and prepare loo
+	  # Set try-out values and prepare loop
 	  tune_maxdepth <- 2:10
 	  psa_dat$wt_kw <- psa_dat$wt
 	  p_scores.tmp  <- data.frame(matrix(ncol = length(tune_maxdepth), nrow = nrow(psa_dat)))
@@ -237,7 +239,6 @@ for (k in 1:7){
 	  est[simu, 8, k] = sum(samp.c$y*kw[, 3])/sum(kw[, 3])
 	  #names(samp.c)[names(samp.c) == paste0("kw.", "mob.", best, collapse = "")] <- "kw.3"
 	  samp.c[, grep("kw.mob", names(samp.c))] <- NULL
-	
 	  dim(kw)
 	  
 	  ###########################################################################
@@ -287,27 +288,23 @@ for (k in 1:7){
     dim(kw)
     
     ###########################################################################
-    ##                   Extremely Randomized Trees (XTREE)                  ##
+    ##                     Conditional Random Forests (CRF)                  ##
     ###########################################################################
     # Set try-out values and prepare loop
-    #tune_mtry <- c(floor(sqrt(cols)), floor(log(cols)))
+    tune_mincriterion <- c(0.99, 0.95, 0.9)
     #psa_dat$wt_kw <- psa_dat$wt
-    #p_scores  <- data.frame(matrix(ncol = length(tune_mtry), nrow = nrow(psa_dat)))
-    #p_score_c <- data.frame(matrix(ncol = length(tune_mtry), nrow = n_c))
-    #p_score_s <- data.frame(matrix(ncol = length(tune_mtry), nrow = n_s))
-    #smds <- rep(NA, length(tune_mtry))
+    p_scores  <- data.frame(matrix(ncol = length(tune_mincriterion), nrow = nrow(psa_dat)))
+    p_score_c <- data.frame(matrix(ncol = length(tune_mincriterion), nrow = n_c))
+    p_score_s <- data.frame(matrix(ncol = length(tune_mincriterion), nrow = n_s))
+    smds <- rep(NA, length(tune_mincriterion))
     # Loop over try-out values
-    for (i in seq_along(tune_mtry)){ 
-      mtry <- tune_mtry[i]
-      xtree <- ranger(trt_n~w1+w2+w3+w4+w5+w6+w7,
-                      data = psa_dat,
-                      splitrule = "extratrees",
-                      num.random.splits = 1,
-                      num.trees = 500,
-                      mtry = mtry,
-                      min.node.size = 15,
-                      probability = T)
-      p_scores.tmp[, i]  <- predict(xtree, psa_dat, type = "response")$predictions[, 2]
+    for (i in seq_along(tune_mincriterion)){ 
+      minc <- tune_mincriterion[i]
+      crf <- cforest(trt~w1+w2+w3+w4+w5+w6+w7,
+                     data = psa_dat,
+                     control = ctree_control(mincriterion = minc),
+                     ntree = 100)
+      p_scores.tmp[, i]  <- predict(crf, newdata = psa_dat, type = "prob")[, 2]
       p_score_c.tmp[, i] <- p_scores.tmp[psa_dat$trt == 1, i]
       p_score_s.tmp[, i] <- p_scores.tmp[psa_dat$trt == 0, i]
       # Calculate KW weights
@@ -318,21 +315,20 @@ for (k in 1:7){
       smds[i] <- mean(abs(bal.tab(psa_dat[, covars], treat = psa_dat$trt, weights = psa_dat$wt_kw,
                                   s.d.denom = "pooled", binary = "std", method = "weighting")$Balance[, "Diff.Adj"]))
       # Save KW weights of current iteration 
-      names(samp.c)[dim(samp.c)[2]] <- paste0("kw.xtree.", i)
+      names(samp.c)[dim(samp.c)[2]] <- paste0("kw.crf.", i)
       print(i)
     }
     # Select KW weights with best average covariate balance
     best <- which.min(smds)
 	  p_score.c = cbind(p_score.c, p_score_c.tmp[, best])
 	  p_score.s = cbind(p_score.s, p_score_s.tmp[, best])	
-	  kw[, 5] = samp.c[,names(samp.c) == paste0("kw.xtree.", best)]
+	  kw[, 5] = samp.c[,names(samp.c) == paste0("kw.crf.", best)]
 	  wt_m[simu,10, k] = mean(kw[,5])
 	  wt_v[simu,10, k] = var(kw[,5])                      
 	  est[simu, 10, k] = sum(samp.c$y*kw[, 5])/sum(kw[, 5])
-    #names(samp.c)[names(samp.c) == paste0("kw.", "xtree.", best, collapse = "")] <- "kw.5"
-    samp.c[, grep("kw.xtree", names(samp.c))] <- NULL
+    #names(samp.c)[names(samp.c) == paste0("kw.", "crf.", best, collapse = "")] <- "kw.5"
+    samp.c[, grep("kw.crf", names(samp.c))] <- NULL
     dim(kw)
-    
     
     ###########################################################################
     ##                        Gradient Boosting (GBM)                        ##
@@ -405,7 +401,6 @@ for (k in 1:7){
     #names(samp.c)[names(samp.c) == paste0("kw.gbm.o", best)] <- "kw.6"
     samp.c[, grep("kw.gbm.o", names(samp.c))] <- NULL
     dim(kw)
-    
     
     ###########################################################################
     ##                     Model-based Boosting (mboost)                     ##
