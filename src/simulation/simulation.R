@@ -56,12 +56,27 @@ pop$w5_w7 = .5*pop$w5*pop$w7
 pop$w1_w6 = .5*pop$w1*pop$w6
 pop$w2_w3 = .7*pop$w2*pop$w3
 pop$w3_w4 = .5*pop$w3*pop$w4
+pop$w2_3 = pop$w2^3
+pop$w4_3 = pop$w4^3
+pop$w1_w2_w3 = .4*pop$w1*pop$w2*pop$w3
+pop$w2_2_w4_2 = 0.4*pop$w2_2*pop$w4_2
+
+pop$w1_c = as.numeric(cut(pop$w1, c(-5, -1, 0, 1, 6)))
+pop$w2_c = as.numeric(cut(pop$w2, c(-5, -1.5, -1, -0.5, 0.5, 1, 1.5, 5)))
+pop$w3_c = as.numeric(cut(pop$w2, c(-5, 0, 5)))
+pop$w4_c = as.numeric(cut(pop$w2, c(-5,-2, 2, 5)))
+pop$w5_s = sqrt(abs(pop$w5))
+pop$w6_e = exp(pop$w6/2)
+pop$w7_l = log(pop$w7+5)
+
+
+
 covars   = names(pop)[1:7]
 c_covars = names(pop)[1:7]
 f_covars = NULL
 if(sum(!(covars%in%c_covars))) f_covars=covars[!(covars%in%c_covars)]
 
-odds=matrix(0, N, 7)
+odds=matrix(0, N, 9)
 odds[,1] = exp(as.matrix(cbind(1, pop[,c(1:7)]))%*%matrix(beta, n.beta, 1))
 odds[,2] = exp(as.matrix(cbind(1, pop[,c(1:7, 12)]))%*%matrix(beta[c(1:8, 3)], n.beta+1, 1))
 odds[,3] = exp(as.matrix(cbind(1, pop[,c(1:7, 12:14)]))%*%matrix(beta[c(1:8, 3, 5, 8)], n.beta+3, 1))
@@ -69,9 +84,14 @@ odds[,4] = exp(as.matrix(cbind(1, pop[,c(1:7, 15:18)]))%*%matrix(beta[c(1:8, 2, 
 odds[,5] = exp(as.matrix(cbind(1, pop[,c(1:7, 12, 15:18)]))%*%matrix(beta[c(1:8, 3, 2, 3, 5, 6)], n.beta+5, 1))
 odds[,6] = exp(as.matrix(cbind(1, pop[,c(1:7, 15, 16, 19:24, 17, 18)]))%*%matrix(beta[c(1:8, 2:6, 2:6)], n.beta+10, 1))
 odds[,7] = exp(as.matrix(cbind(1, pop[,c(1:7, 12:14, 15, 16, 19:24, 17, 18)]))%*%matrix(beta[c(1:8, 3, 5, 8, 2:6, 2:6)], n.beta+13, 1))
+odds[,8] = exp(as.matrix(cbind(1, pop[,c(1:7, 12:14, 15, 16, 19:24, 17, 18, 25:28)]))%*%matrix(beta[c(1:8, 3, 5, 8, 2:6, 2:6, 3, 5, 2, 4)], n.beta+17, 1))
+odds[,9] = exp(as.matrix(cbind(1, pop[,c(29:35)]))%*%matrix(beta[c(1:8)], n.beta, 1))
+
 #q = as.data.frame(odds/(1+odds))
-q_c = cbind(odds[,1]^0.3, odds[,2]^0.25, odds[,3]^0.2, odds[,4]^0.27, odds[,5]^0.25, odds[,6]^0.22, odds[,7]^0.17)
-q_s = cbind(odds[,1]^-0.2, odds[,2]^-0.2, odds[,3]^-0.15, odds[,4]^-0.17, odds[,5]^-0.17, odds[,6]^-0.15, odds[,7]^-0.13)
+q_c = cbind(odds[,1]^0.3,   odds[,2]^0.25,  odds[,3]^0.2,   odds[,4]^0.27,  odds[,5]^0.25, 
+            odds[,6]^0.22,  odds[,7]^0.17,  odds[,8]^0.08,  odds[,9]^0.35)
+q_s = cbind(odds[,1]^-0.2,  odds[,2]^-0.2,  odds[,3]^-0.15, odds[,4]^-0.17, odds[,5]^-0.17, 
+            odds[,6]^-0.15, odds[,7]^-0.13, odds[,8]^-0.05, odds[,9]^-0.25)
 
 Formulas = c("trt~w1+w2+w3+w4+w5+w6+w7",
              "trt~w1+w2+w3+w4+w5+w6+w7+w2_2",
@@ -79,13 +99,16 @@ Formulas = c("trt~w1+w2+w3+w4+w5+w6+w7",
              "trt~w1+w2+w3+w4+w5+w6+w7+w1_w3+w2_w4+w4_w5+w5_w6",
              "trt~w1+w2+w3+w4+w5+w6+w7+w2_2+w1_w3+w2_w4+w4_w5+w5_w6",
              "trt~w1+w2+w3+w4+w5+w6+w7+w1_w3+w2_w4+w4_w5+w5_w6+w3_w5+w4_w6+w5_w7+w1_w6+w2_w3+w3_w4",
-             "trt~w1+w2+w3+w4+w5+w6+w7+w2_2+w4_2+w7_2+w1_w3+w2_w4+w4_w5+w5_w6+w3_w5+w4_w6+w5_w7+w1_w6+w2_w3+w3_w4")
+             "trt~w1+w2+w3+w4+w5+w6+w7+w2_2+w4_2+w7_2+w1_w3+w2_w4+w4_w5+w5_w6+w3_w5+w4_w6+w5_w7+w1_w6+w2_w3+w3_w4",
+             "trt~w1+w2+w3+w4+w5+w6+w7+w2_2+w4_2+w7_2+w1_w3+w2_w4+w4_w5+w5_w6+w3_w5+w4_w6+w5_w7+w1_w6+w2_w3+w3_w4+w2_3+w4_3+w1_w2_w3+w2_2_w4_2",
+             "trt~w1_c+w2_c+w3_c+w4_c+w5_s+w6_e+w7_l")
+
 fm.p = update(as.formula(Formulas[1]), ~.^2)
 
-NSIMU=10
+NSIMU=5
 n_c = 5000
 n_s = 5000
-est = array(0, c(NSIMU, 15, 7)#,
+est = array(0, c(NSIMU, 15, length(Formulas))#,
             #dimnames = list(c(1:NSIMU), c("Naive", "wtd chrt", "wtd svy", "IPSW(true)", "IPSW(main)", "KW (true)", 
             #                              "KW(main)", "KW (MOB)", "KW (RF)", "KW (XTree)", "KW (GBM)"),
             #                paste0(rep("model", 7), c(1:7), sep=""))
@@ -95,9 +118,9 @@ wt_m = est
 wt_v = est
 p_score.c=NULL
 p_score.s=NULL
-for (k in 1:7){
+for (k in 8:9){
+
   for(simu in 1:NSIMU){
-#k=1
 #simu=1
     samp.c = samp.slct(seed = seed1[simu], 
                        fnt.pop = pop, 
@@ -105,7 +128,8 @@ for (k in 1:7){
                        dsgn = "pps", 
                        size = q_c[, k])
     wt_m[simu,2, k] = mean(samp.c$wt)
-    wt_v[simu,2, k] = var(samp.c$wt)                  
+    wt_v[simu,2, k] = var(samp.c$wt)  
+    sqrt(wt_v[simu,2, k])/wt_m[simu,2, k]
     est[simu, 1, k] = mean(samp.c$y)
     est[simu, 2, k] = sum(samp.c$y*samp.c$wt)/sum(samp.c$wt)
     samp.s = samp.slct(seed = seed1[simu], 
@@ -115,9 +139,9 @@ for (k in 1:7){
                        size = q_s[, k])
     wt_m[simu,3, k] = mean(samp.s$wt)
     wt_v[simu,3, k] = var(samp.s$wt)
+    sqrt(wt_v[simu,3, k])/wt_m[simu,3, k]
     est[simu, 3, k] = sum(samp.s$y*samp.s$wt)/sum(samp.s$wt)
-    
-    # Combine survey and cohort data 
+     # Combine survey and cohort data 
     psa_dat = rbind(samp.c, samp.s)
     psa_dat$elig_wt = c(rep(1, n_c), samp.s$wt)
     psa_dat$trt_n =c(rep(1, n_c), rep(0, n_s))
@@ -211,9 +235,9 @@ for (k in 1:7){
     est[simu, 9, k] = sum(samp.c$y*kw[, 3])/sum(kw[, 3])
 
     cols <- ncol(model.matrix(trt~w1+w2+w3+w4+w5+w6+w7, data = psa_dat))
-    ############################################################################
-    ##                Model-based recursive partitioning (MOB)                ##
-    ############################################################################
+    ###########################################################################
+    ##                Model-based recursive partitioning (MOB)               ##
+    ###########################################################################
     # Set try-out values and prepare loop
     tune_maxdepth <- 2:10
     psa_dat$wt_kw <- psa_dat$elig_wt
@@ -248,7 +272,7 @@ for (k in 1:7){
       names(samp.c)[dim(samp.c)[2]] <- paste0("kw.mob.", i)
       # Check improvement in covariate balance
       if (abs(smds[i] - smds[i+1]) < 0.001 | length(tune_maxdepth) == i){
-        print(i)
+        print(paste0("mob", i))
         break
       }
     }
@@ -261,9 +285,9 @@ for (k in 1:7){
     wt_v[simu,10, k] = var(kw[,4])                      
     est[simu, 10, k] = sum(samp.c$y*kw[, 4])/sum(kw[, 4])
     samp.c[, grep("kw.mob", names(samp.c))] <- NULL
-    ############################################################################
-    ##                           Random Forest (RF)                           ##
-    ############################################################################
+    ###########################################################################
+    ##                           Random Forest (RF)                          ##
+    ###########################################################################
     # Set try-out values and prepare loop
     tune_mtry <- c(floor(sqrt(cols)), floor(log(cols)))
     psa_dat$wt_kw <- psa_dat$elig_wt
@@ -293,7 +317,7 @@ for (k in 1:7){
                                   s.d.denom = "pooled", binary = "std", method = "weighting")$Balance[, "Diff.Adj"]))
       # Save KW weights of current iteration
       names(samp.c)[dim(samp.c)[2]] <- paste0("kw.rf.", i)
-      print(i)
+      print(paste0("rf", i))
     }
     # Select KW weights with best average covariate balance
     best <- which.min(smds)
@@ -303,6 +327,7 @@ for (k in 1:7){
     wt_m[simu,11, k] = mean(kw[,5])
     wt_v[simu,11, k] = var(kw[,5])                      
     est[simu, 11, k] = sum(samp.c$y*kw[, 5])/sum(kw[, 5])
+    #names(samp.c)[names(samp.c) == paste0("kw.", "rf.", best, collapse = "")] <- "kw.5"
     samp.c[, grep("kw.rf", names(samp.c))] <- NULL
     ###########################################################################
     ##                     Conditional Random Forests (CRF)                  ##
@@ -333,7 +358,7 @@ for (k in 1:7){
                                   s.d.denom = "pooled", binary = "std", method = "weighting")$Balance[, "Diff.Adj"]))
       # Save KW weights of current iteration 
       names(samp.c)[dim(samp.c)[2]] <- paste0("kw.crf.", i)
-      print(i)
+      print(paste0("crf", i))
     }
     # Select KW weights with best average covariate balance
     best <- which.min(smds)
@@ -343,10 +368,11 @@ for (k in 1:7){
     wt_m[simu,12, k] = mean(kw[,6])
     wt_v[simu,12, k] = var(kw[,6])                      
     est[simu, 12, k] = sum(samp.c$y*kw[, 6])/sum(kw[, 6])
+    #names(samp.c)[names(samp.c) == paste0("kw.", "crf.", best, collapse = "")] <- "kw.5"
     samp.c[, grep("kw.crf", names(samp.c))] <- NULL
-    ############################################################################
-    ##                    Extremely Randomized Trees (XTREE)                  ##
-    ############################################################################
+    ###########################################################################
+    ##                   Extremely Randomized Trees (XTREE)                  ##
+    ###########################################################################
     # Set try-out values and prepare loop
     tune_mtry <- c(floor(sqrt(cols)), floor(log(cols)))
     psa_dat$wt_kw <- psa_dat$elig_wt
@@ -377,7 +403,7 @@ for (k in 1:7){
                                   s.d.denom = "pooled", binary = "std", method = "weighting")$Balance[, "Diff.Adj"]))
       # Save KW weights of current iteration 
       names(samp.c)[dim(samp.c)[2]] <- paste0("kw.xtree.", i)
-      print(i)
+      print(paste0("xtree", i))
     }
     # Select KW weights with best average covariate balance
     best <- which.min(smds)
@@ -387,10 +413,11 @@ for (k in 1:7){
     wt_m[simu,13, k] = mean(kw[,7])
     wt_v[simu,13, k] = var(kw[,7])                      
     est[simu, 13, k] = sum(samp.c$y*kw[, 7])/sum(kw[, 7])
+    #names(samp.c)[names(samp.c) == paste0("kw.", "xtree.", best, collapse = "")] <- "kw.7"
     samp.c[, grep("kw.xtree", names(samp.c))] <- NULL
-    ############################################################################
-    ##                         Gradient Boosting (GBM)                        ##
-    ############################################################################
+    ###########################################################################
+    ##                        Gradient Boosting (GBM)                        ##
+    ###########################################################################
     # Set try-out values and prepare loop
     #psa_dat$wt_kw <- psa_dat$elig_wt
     tune_idepth <- 1:5
@@ -433,7 +460,7 @@ for (k in 1:7){
         names(samp.c)[dim(samp.c)[2]] <- paste0("kw.gbm.i", j)
         # Check improvement in covariate balance
         if (abs(smds_i[j] - smds_i[j+1]) < 0.001 | length(tune_ntree) == j){
-          print(j)
+          print(paste0("gbm", j))
           break
         }
       } 
@@ -453,14 +480,14 @@ for (k in 1:7){
     wt_v[simu,14, k] = var(kw[,8])                      
     est[simu, 14, k] = sum(samp.c$y*kw[, 8])/sum(kw[, 8])
     samp.c[, grep("kw.gbm.o", names(samp.c))] <- NULL
-    ###########################################################################
-    ##                     Model-based Boosting (mboost)                     ##
-    ###########################################################################
-    # Set try-out values and prepare loop
+    ##########################################################################
+    #                     Model-based Boosting (mboost)                     ##
+    ##########################################################################
+    #Set try-out values and prepare loop
     c_covars_c = paste0(c_covars, "_c")
     psa_dat[, c_covars_c] <- lapply(psa_dat[, c_covars],scale, scale = F)
     covars_rnm = c("int", c_covars_c, f_covars)
-    #psa_dat$wt_kw <- psa_dat$elig_wt
+    psa_dat$wt_kw <- psa_dat$elig_wt
     psa_dat$int = rep(1, length(psa_dat$trt))
     tune_mstop <- c(50, 100, 250, 500)
     p_score       <- data.frame(matrix(ncol = length(tune_mstop), nrow = nrow(psa_dat)))
@@ -494,20 +521,18 @@ for (k in 1:7){
       names(samp.c)[dim(samp.c)[2]] <- paste0("kw.mboost.", i)
       # Check improvement in covariate balance
       if (abs(smds[i] - smds[i+1]) < 0.001 | length(tune_mstop) == i){
-        print(i)
+        print(paste0("mboost", i))
         break
       }
     }
     # Select KW weights with best average covariate balance
-    best <- which.min(smds[2:(length(tune_mstop)+1)])
-    p_score.c = cbind(p_score.c, mboost = p_score_c.tmp[, best])
-    p_score.s = cbind(p_score.s, mboost = p_score_s.tmp[, best])
-    kw[, 9] = samp.c[,names(samp.c) == paste0("kw.mboost.", best)]
+    p_score.c = cbind(p_score.c, mboost = p_score_c.tmp[, ifelse(i == 1, i, i-1)])
+    p_score.s = cbind(p_score.s, mboost = p_score_s.tmp[, ifelse(i == 1, i, i-1)])
+    kw[, 9] = samp.c[,names(samp.c) == paste0("kw.mboost.", ifelse(i == 1, i, i-1))]
     wt_m[simu,15, k] = mean(kw[,9])
     wt_v[simu,15, k] = var(kw[,9])                      
     est[simu, 15, k] = sum(samp.c$y*kw[, 9])/sum(kw[, 9])
     samp.c[, grep("kw.mboost", names(samp.c))] <- NULL
-    
     print(paste0("simu", simu))
   }
   print(paste0("model", k))
@@ -523,7 +548,7 @@ seed_k = cbind(node = kk, seed= seed1)
 #save(wt_m, file = "wt_m.rda")
 #save(est, file = "est.rda")
 
-write.table(as.data.frame.table(wt_v), "/home/wangl29/kw_ml/wt_v.txt", append = T, row.names = F, col.names = F)
-write.table(as.data.frame.table(wt_m), "/home/wangl29/kw_ml/wt_m.txt", append = T, row.names = F, col.names = F)
-write.table(as.data.frame.table(est) , "/home/wangl29/kw_ml/est.txt" , append = T, row.names = F, col.names = F)
+write.table(as.data.frame.table(wt_v), "/home/wangl29/kw_ml_r/wt_v.txt", append = T, row.names = F, col.names = F)
+write.table(as.data.frame.table(wt_m), "/home/wangl29/kw_ml_r/wt_m.txt", append = T, row.names = F, col.names = F)
+write.table(as.data.frame.table(est) , "/home/wangl29/kw_ml_r/est.txt" , append = T, row.names = F, col.names = F)
 
