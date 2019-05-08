@@ -9,13 +9,17 @@ library(gbm)
 library(mboost)
 
 # Set directory
-setwd("C:/Users/wangl29/Box/Research/Lingxiao Projects/Machine learning methods/Nonprobability weighting")
+#setwd("C:/Users/wangl29/Box/Research/Lingxiao Projects/Machine learning methods/Nonprobability weighting")
+#setwd("/Users/yanli/Box/Lingxiao Projects/Machine learning methods/Nonprobability weighting")
+setwd("/home/wangl29/kw_ml")
+
 # Read aarp data
-aarp_syn = read.table("aarp_orig.txt", head=T)# change to "aarp_orig.txt" for the original aarp data
+aarp_syn = read.table("aarp_orig_all.txt", head=T)
 # Read nhis data
-nhis_m = read.table("nhis.txt", head=T)
+nhis_m = read.table("nhis_all.txt", head=T)
 # Load R functions for pseudo weights calculation
 source("weighting_functions.R")
+source("output.R")
 # Check variable names in the two data sets. Please see "variable dictionary.xlsx" for data dictionary
 names(aarp_syn)
 names(nhis_m)
@@ -25,7 +29,8 @@ n_s=dim(nhis_m)[1]
 
 # Combine NHIS and AARP data 
 psa_dat = rbind(nhis_m, aarp_syn)
-psa_dat$wt = c(nhis_m$elig_wt, rep(1, n_c))
+#psa_dat$wt = c(nhis_m$elig_wt, rep(1, n_c))
+psa_dat$wt = c(nhis_m$wt, rep(1, n_c))
 psa_dat$trt = c(rep(0, n_s), rep(1, n_c))
 # Name of data source indicator in the combined sample 
 rsp_name="trt" # 1 for AARP, 0 for NHIS
@@ -47,14 +52,17 @@ summary(abs(tab_pre_adjust$Balance[, "Diff.Adj"]))
 #### Calculate propensity scores and pseudo weights based on logistic regression
 
 #Fitted propensity score model
+
 Formula_fit = as.formula("trt ~ age+sex+as.factor(race)+as.factor(martl)+educ+bmi+as.factor(smk1)+phys+health+
-                  sex:as.factor(martl)+educ:health+as.factor(race):educ+age:phys+age:as.factor(martl)+
-                 phys:health+as.factor(race):health+age:as.factor(race)+sex:as.factor(smk1)+
-                 as.factor(race):as.factor(smk1)+age:health+educ:phys+age:as.factor(smk1)+age:bmi+
-                 educ:as.factor(smk1)+as.factor(martl):health+sex:educ+age:educ+as.factor(smk1):phys+
-                 as.factor(race):as.factor(martl)+sex:health+sex:as.factor(race)+as.factor(race):phys+
-                 bmi:as.factor(smk1)+as.factor(martl):phys+as.factor(smk1):health+bmi:phys+as.factor(martl):educ+
-                 sex:bmi+educ:bmi+sex:phys")
+                         sex:as.factor(martl)+educ:health+as.factor(race):educ+age:phys+age:as.factor(martl)+
+                         phys:health+as.factor(race):health+age:as.factor(race)+sex:as.factor(smk1)+
+                         as.factor(race):as.factor(smk1)+age:health+educ:phys+age:as.factor(smk1)+age:bmi+
+                         educ:as.factor(smk1)+as.factor(martl):health+sex:educ+age:educ+as.factor(smk1):phys+
+                         as.factor(race):as.factor(martl)+sex:health+sex:as.factor(race)+as.factor(race):phys+
+                         bmi:as.factor(smk1)+as.factor(martl):phys+as.factor(smk1):health+bmi:phys+as.factor(martl):educ+
+                         sex:bmi+educ:bmi+sex:phys")
+
+#Formula_fit = as.formula("trt ~ age+sex+as.factor(race)+as.factor(martl)+educ+bmi+as.factor(smk1)+phys+health")
 # unweighted propensity score model
 svyds = svydesign(ids =~1, weight = rep(1, n_c+n_s), data = psa_dat)
 lgtreg = svyglm(Formula_fit, family = binomial, design = svyds)
@@ -79,11 +87,13 @@ aarp_syn$kw.1 = kw.wt(p_score.c = p_score.c[,1], p_score.s = p_score.s[,1], svy.
 # Save propensity scores
 psa_dat$ps.1 = p_score
 
+set.seed(0.3240913255)
 ###########################################################################
 #### Calculate propensity scores and KW weights based on ML methods
 
-#### Model-based recursive partitioning (MOB)
-
+####################################################################################
+####                  Model-based recursive partitioning (MOB)                  ####
+####################################################################################
 # Set try-out values and prepare loop
 psa_dat$wt_kw <- psa_dat$wt
 tune_maxdepth <- 2:10
@@ -95,7 +105,6 @@ i <- 0
 # Loop over try-out values
 repeat {
   i <- i+1
-  print(i)
   # Run model
   maxdepth <- tune_maxdepth[i]
   mob <- glmtree(trt_f ~ age+sex_f+race_f+martl_f+educ+bmi+smk1_f+phys+health | age+sex_f+race_f+martl_f+educ+bmi+smk1_f+phys+health, 
@@ -111,23 +120,29 @@ repeat {
   aarp_syn$kw <- kw.wt(p_score.c = p_score_c, p_score.s = p_score_s, svy.wt = nhis_m$elig_wt, Large = T)$pswt
   # Calculate covariate balance
   psa_dat$wt_kw[psa_dat$trt == 1] <- aarp_syn$kw
-  smds[i+1] <- mean(abs(bal.tab(psa_dat[, covars], treat = psa_dat$trt, weights = psa_dat$wt_kw, s.d.denom = "pooled", binary = "std")$Balance[, "Diff.Adj"]))
+  smds[i+1] <- mean(abs(bal.tab(psa_dat[, covars], treat = psa_dat$trt, weights = psa_dat$wt_kw, s.d.denom = "pooled", 
+                                method = "weighting", binary = "std")$Balance[, "Diff.Adj"]))
   # Save KW weights of current iteration 
   names(aarp_syn)[dim(aarp_syn)[2]] <- paste0("kw.mob.", i)
   # Check improvement in covariate balance
-  if (smds[i] - smds[i+1] < 0.001 | length(tune_maxdepth) == i){
+  if (abs(smds[i] - smds[i+1]) < 0.001 | length(tune_maxdepth) == i){
+    print(paste0("mob", i))
     break
   }
 }
 
 # Select KW weights with best average covariate balance
-names(aarp_syn)[names(aarp_syn) == paste0("kw.mob.", ifelse(i == 1, i, i-1))] <- "kw.2"
+# Select KW weights with best average covariate balance
+best <- which.min(smds[2:(length(tune_maxdepth)+1)])
+print(best)
+names(aarp_syn)[names(aarp_syn) == paste0("kw.mob.", best)] <- "kw.2"
 aarp_syn[, grep("kw.mob", names(aarp_syn))] <- NULL
 # Save propensity scores
-psa_dat$ps.2 <- p_scores[, ifelse(i == 1, i, i-1)]
+psa_dat$ps.2 <- p_scores[, best]
 
-#### Random Forest (RF)
-
+####################################################################################
+####                             Random Forest (RF)                             ####
+####################################################################################
 # Set try-out values and prepare loop
 psa_dat$wt_kw <- psa_dat$wt
 tune_mtry <- c(floor(sqrt(cols)), floor(log(cols)))
@@ -153,9 +168,11 @@ for (i in seq_along(tune_mtry)) {
   aarp_syn$kw <- kw.wt(p_score.c = p_score_c, p_score.s = p_score_s, svy.wt = nhis_m$elig_wt, Large = T)$pswt
   # Calculate covariate balance
   psa_dat$wt_kw[psa_dat$trt == 1] <- aarp_syn$kw
-  smds[i] <- mean(abs(bal.tab(psa_dat[, covars], treat = psa_dat$trt, weights = psa_dat$wt_kw, s.d.denom = "pooled", binary = "std")$Balance[, "Diff.Adj"]))
+  smds[i] <- mean(abs(bal.tab(psa_dat[, covars], treat = psa_dat$trt, weights = psa_dat$wt_kw, s.d.denom = "pooled", 
+                              method = "weighting", binary = "std")$Balance[, "Diff.Adj"]))
   # Save KW weights of current iteration
   names(aarp_syn)[dim(aarp_syn)[2]] <- paste0("kw.rf.", i)
+  print(paste0("rf", i))
 }
 
 # Select KW weights with best average covariate balance
@@ -165,7 +182,11 @@ aarp_syn[, grep("kw.rf", names(aarp_syn))] <- NULL
 # Save propensity scores
 psa_dat$ps.3 <- p_scores[, best]
 
-#### Extremely Randomized Trees (XTREE)
+
+
+###########################################################################
+##                   Extremely Randomized Trees (XTREE)                  ##
+###########################################################################
 
 # Set try-out values and prepare loop
 psa_dat$wt_kw <- psa_dat$wt
@@ -175,7 +196,6 @@ smds <- rep(NA, length(tune_mtry))
 
 # Loop over try-out values
 for (i in seq_along(tune_mtry)) {
-  print(i)
   # Run model
   mtry <- tune_mtry[i]
   xtree <- ranger(trt_f ~ age+sex_f+race_f+martl_f+educ+bmi+smk1_f+phys+health,
@@ -193,9 +213,11 @@ for (i in seq_along(tune_mtry)) {
   aarp_syn$kw <- kw.wt(p_score.c = p_score_c, p_score.s = p_score_s, svy.wt = nhis_m$elig_wt, Large = T)$pswt
   # Calculate covariate balance
   psa_dat$wt_kw[psa_dat$trt == 1] <- aarp_syn$kw
-  smds[i] <- mean(abs(bal.tab(psa_dat[, covars], treat = psa_dat$trt, weights = psa_dat$wt_kw, s.d.denom = "pooled", binary = "std")$Balance[, "Diff.Adj"]))
+  smds[i] <- mean(abs(bal.tab(psa_dat[, covars], treat = psa_dat$trt, weights = psa_dat$wt_kw, s.d.denom = "pooled", 
+                              method = "weighting", binary = "std")$Balance[, "Diff.Adj"]))
   # Save KW weights of current iteration 
   names(aarp_syn)[dim(aarp_syn)[2]] <- paste0("kw.xtree.", i)
+  print(paste0("xtree", i))
 }
 
 # Select KW weights with best average covariate balance
@@ -205,8 +227,9 @@ aarp_syn[, grep("kw.xtree", names(aarp_syn))] <- NULL
 # Save propensity scores
 psa_dat$ps.4 <- p_scores[, best]
 
-#### Gradient Boosting (GBM)
-
+####################################################################################
+####                          Gradient Boosting (GBM)                           ####
+####################################################################################
 # Set try-out values and prepare loop
 psa_dat$wt_kw <- psa_dat$wt
 tune_idepth <- 1:3
@@ -219,7 +242,6 @@ smds_i[1] <- mean(abs(tab_pre_adjust$Balance[, "Diff.Adj"]))
 
 # Outer loop over try-out values
 for (i in seq_along(tune_idepth)) {
-  print(i)
   idepth <- tune_idepth[i] 
   j <- 0
   # Inner loop over try-out values
@@ -241,11 +263,13 @@ for (i in seq_along(tune_idepth)) {
     aarp_syn$kw <- kw.wt(p_score.c = p_score_c, p_score.s = p_score_s, svy.wt = nhis_m$elig_wt, Large = T)$pswt
     # Calculate covariate balance
     psa_dat$wt_kw[psa_dat$trt == 1] <- aarp_syn$kw
-    smds_i[j+1] <- mean(abs(bal.tab(psa_dat[, covars], treat = psa_dat$trt, weights = psa_dat$wt_kw, s.d.denom = "pooled", binary = "std")$Balance[, "Diff.Adj"]))
+    smds_i[j+1] <- mean(abs(bal.tab(psa_dat[, covars], treat = psa_dat$trt, weights = psa_dat$wt_kw, s.d.denom = "pooled", 
+                                    method = "weighting", binary = "std")$Balance[, "Diff.Adj"]))
     # Save KW weights of current iteration 
     names(aarp_syn)[dim(aarp_syn)[2]] <- paste0("kw.gbm.i", j)
     # Check improvement in covariate balance
-    if (smds_i[j] - smds_i[j+1] < 0.001 | length(tune_ntree) == j){
+    if (abs(smds_i[j] - smds_i[j+1]) < 0.001 | length(tune_ntree) == j){
+      print(paste0("gbm", j))
       break
     }
   }
@@ -262,12 +286,21 @@ aarp_syn[, grep("kw.gbm.o", names(aarp_syn))] <- NULL
 # Save propensity scores
 psa_dat$ps.5 <- p_scores_o[, best]
 
-#### Model-based Boosting (mboost)
-
+####################################################################################
+####                     Model-based Boosting (mboost)                          ####
+####################################################################################
 # Set try-out values and prepare loop
-psa_dat[, c("age_c", "educ_c", "bmi_c", "phys_c", "health_c")] <- lapply(psa_dat[, c("age", "educ", "bmi", "phys", "health")], 
-                                                                  scale, scale = F)
-covars <- c("age_c", "sex_f", "race_f", "martl_f", "educ_c", "bmi_c", "smk1_f", "phys_c", "health_c")
+c_covars=c("age", "educ", "bmi", "phys", "health")
+f_covars=c("sex_f", "race_f", "martl_f", "smk1_f")
+c_covars_c = paste0(c_covars, "_c")
+psa_dat[, c_covars_c] <- lapply(psa_dat[, c_covars],scale, scale = F)
+covars_rnm = c("int", c_covars_c, f_covars)
+
+twoway_int = function(x, y){
+  paste_fun = function(x, y) paste0("bols(", x, ", by = ", y, ", intercept = FALSE)")
+  two_in = outer(x, y, FUN=paste_fun)
+  paste0(t(two_in)[lower.tri(t(two_in))], collapse = "+")
+}
 
 psa_dat$wt_kw <- psa_dat$wt
 psa_dat$int = rep(1, length(psa_dat$trt))
@@ -280,43 +313,16 @@ i <- 0
 # Loop over try-out values
 repeat {
   i <- i+1
-  print(i)
   # Run model
   mstop <- tune_mstop[i]
-  mboost <- gamboost(trt_f ~ bols(int, intercept = FALSE) +
-                     bols(age_c, intercept = FALSE) + bols(sex_f, intercept = FALSE) +
-                     bols(race_f, intercept = FALSE) + bols(martl_f, intercept = FALSE) +
-                     bols(educ_c, intercept = FALSE) + bols(bmi_c, intercept = FALSE) +
-                     bols(smk1_f, intercept = FALSE) + bols(phys_c, intercept = FALSE) +
-                     bols(health_c, intercept = FALSE) +
-                     bbs(age_c, center = TRUE, df = 1, knots = 20) + bbs(educ_c, center = TRUE, df = 1, knots = 20) + 
-                     bbs(bmi_c, center = TRUE, df = 1, knots = 20) + bbs(phys_c, center = TRUE, df = 1, knots = 20) + 
-                     bbs(health_c, center = TRUE, df = 1, knots = 20) +
-                     bols(age_c, by = sex_f, intercept = FALSE) + bols(age_c, by = race_f, intercept = FALSE) +
-                     bols(age_c, by = martl_f, intercept = FALSE) + bols(age_c, by = educ_c, intercept = FALSE) +
-                     bols(age_c, by = bmi_c, intercept = FALSE) + bols(age_c, by = smk1_f, intercept = FALSE) +
-                     bols(age_c, by = phys_c, intercept = FALSE) + bols(age_c, by = health_c, intercept = FALSE) +
-                     bols(sex_f, by = race_f, intercept = FALSE) + bols(sex_f, by = martl_f, intercept = FALSE) +
-                     bols(sex_f, by = educ_c, intercept = FALSE) + bols(sex_f, by = bmi_c, intercept = FALSE) +
-                     bols(sex_f, by = smk1_f, intercept = FALSE) + bols(sex_f, by = phys_c, intercept = FALSE) +
-                     bols(sex_f, by = health_c, intercept = FALSE) +
-                     bols(race_f, by = martl_f, intercept = FALSE) + bols(race_f, by = educ_c, intercept = FALSE) +
-                     bols(race_f, by = bmi_c, intercept = FALSE) + bols(race_f, by = smk1_f, intercept = FALSE) +
-                     bols(race_f, by = phys_c, intercept = FALSE) + bols(race_f, by = health_c, intercept = FALSE) +
-                     bols(martl_f, by = educ_c, intercept = FALSE) + bols(martl_f, by = bmi_c, intercept = FALSE) +
-                     bols(martl_f, by = smk1_f, intercept = FALSE) + bols(martl_f, by = phys_c, intercept = FALSE) + 
-                     bols(martl_f, by = health_c, intercept = FALSE) + 
-                     bols(educ_c, by = bmi_c, intercept = FALSE) + bols(educ_c, by = smk1_f, intercept = FALSE) +
-                     bols(educ_c, by = phys_c, intercept = FALSE) + bols(educ_c, by = health_c, intercept = FALSE) +
-                     bols(bmi_c, by = smk1_f, intercept = FALSE) + bols(bmi_c, by = phys_c, intercept = FALSE) +
-                     bols(bmi_c, by = health_c, intercept = FALSE) +
-                     bols(smk1_f, by = phys_c, intercept = FALSE) + bols(smk1_f, by = health_c, intercept = FALSE) +
-                     bols(phys_c, by = health_c, intercept = FALSE),
+  mboost <- gamboost(as.formula(paste("trt_f ~", paste0(" bols(", covars_rnm, ", intercept = FALSE)", collapse = "+"), "+",
+                                      paste0(" bbs(", c_covars_c, ", center = TRUE, df = 1, knots = 20)", collapse = "+"), "+",
+                                      twoway_int(covars_rnm[-1], covars_rnm[-1]))),
                      control = boost_control(mstop = mstop, 
                                              nu = 0.1),
                      family = Binomial(link = "logit"),
                      data = psa_dat)
-  p_scores[, i] <- as.numeric(predict(mboost, psa_dat, type = "response"))
+  p_scores[, i] <- as.numeric(predict(mboost, data=psa_dat, type = "response"))
   p_score_c <- p_scores[psa_dat$trt == 1, i]
   p_score_s <- p_scores[psa_dat$trt == 0, i]
   # Calculate KW weights
@@ -328,120 +334,78 @@ repeat {
   # Save KW weights of current iteration 
   names(aarp_syn)[dim(aarp_syn)[2]] <- paste0("kw.mboost.", i)
   # Check improvement in covariate balance
-  if (smds[i] - smds[i+1] < 0.001 | length(tune_mstop) == i){
+  if (abs(smds[i] - smds[i+1]) < 0.001 | length(tune_mstop) == i){
+    print(paste0("mboost", i))
     break
   }
 }
 
 # Select KW weights with best average covariate balance
-names(aarp_syn)[names(aarp_syn) == paste0("kw.mboost.", ifelse(i == 1, i, i-1))] <- "kw.6"
+best <- which.min(smds[2:(length(tune_mstop)+1)])
+names(aarp_syn)[names(aarp_syn) == paste0("kw.mboost.", best)] <- "kw.6"
 aarp_syn[, grep("kw.mboost", names(aarp_syn))] <- NULL
 # Save propensity scores
-psa_dat$ps.6 <- p_scores[, ifelse(i == 1, i, i-1)]
+psa_dat$ps.6 <- p_scores[, best]
 
 ###########################################################################
-#### Calcute weighted estimates 
-
-# NHIS estimate of 9-year all-cause mortality
-est_nhis = sum(nhis_m$mtlty*nhis_m$elig_wt)/sum(nhis_m$elig_wt)
-age_c.m_nhis = outer(nhis_m$age_c4, c(1:4), function(a, b)as.integer(a==b))
-grp_wt.m_nihs = nhis_m$elig_wt*age_c.m_nhis
-est_nhis = c(est_nhis, apply(nhis_m$mtlty*grp_wt.m_nihs, 2, sum)/apply(grp_wt.m_nihs, 2, sum))*100
-round(est_nhis, 2)
-
-# Record the number of methods used for propensity score calculation
-n_pw = length(grep("ipsw", names(aarp_syn), value = T))  # from weighted model, for IPSW
-n_p1 = length(grep("psas", names(aarp_syn), value = T)) # from unweighted models, for PSAS
-n_p2 = length(grep("kw", names(aarp_syn), value = T)) # from unweighted models, for KW
-
-# Setup a matrix storing the weighted estimates
-est = matrix(0, (n_pw+n_p1+n_p2), 5)
-# Convert categorial age group variable to a matrix of dummy variables
-age_c.m = outer(aarp_syn$age_c4, c(1:4), function(a, b)as.integer(a==b))
-
-#### Inverse of propensity score method
-# estimate overall estimate of mortality rate
-est[n_pw,1] = sum(aarp_syn$mtlty*aarp_syn$ipsw)/sum(aarp_syn$ipsw)*100
-# estimate mortality rate by age group 
-grp_wt.m = aarp_syn$ipsw*age_c.m
-est[n_pw,c(2:5)] = apply(aarp_syn$mtlty*grp_wt.m, 2, sum)/apply(grp_wt.m, 2, sum)*100
-
-#### Sub-classification
-# estimate overall estimate of mortality rate
-est[n_pw+n_p1,1] = sum(aarp_syn$mtlty*aarp_syn$psas)/sum(aarp_syn$psas)*100
-# estimate mortality rate by age group 
-grp_wt.m = aarp_syn$psas*age_c.m
-est[n_pw+n_p1,c(2:5)] = apply(aarp_syn$mtlty*grp_wt.m, 2, sum)/apply(grp_wt.m, 2, sum)*100
-
-#### Kernel-weighting 
-for(i in 1:n_p2){
-  # estimate overall estimate of mortality rate
-  est[(i+n_pw+n_p1),1] = sum(aarp_syn$mtlty*eval(parse(text = paste0("aarp_syn$kw.", i))))/sum(eval(parse(text = paste0("aarp_syn$kw.", i))))*100
-  # estimate mortality rate by age group 
-  grp_wt.m = eval(parse(text = paste0("aarp_syn$kw.", i)))*age_c.m
-  est[(i+n_pw+n_p1),c(2:5)] = apply(aarp_syn$mtlty*grp_wt.m, 2, sum)/apply(grp_wt.m, 2, sum)*100
-}
-
+##                     Conditional Random Forests (CRF)                  ##
 ###########################################################################
-#### Compare weighted estimates and balance
-
-# Naive cohort estimate 
-est.cht=mean(aarp_syn$mtlty)*100
-est.cht=c(est.cht, apply(aarp_syn$mtlty*age_c.m, 2, mean)/apply(age_c.m, 2, mean)*100)
-est=rbind(est.cht, est)
-# Relative difference from weighted NHIS estimate
-rel.diff = t((t(est)-est_nhis)/est_nhis*100)
-colnames(rel.diff)=c("Overall", "50-54", "55-59", "60-64", "64+")
-# Please change the row names (weighting method)
-rownames(rel.diff)= c("NIH-AARP", "IPSW", "PSAS", "KW-Logit", "KW-MOB", "KW-RF", "KW-XTREE", "KW-GBM", "KW-mboost")
-round(rel.diff, 3)
-# bias reduction%
-bias.r = t((rel.diff[1,]-t(rel.diff))/rel.diff[1,])*100
-colnames(bias.r)=c("Overall", "50-54", "55-59", "60-64", "64+")
-# Please change the row names (weighting method)
-rownames(bias.r)= c("NIH-AARP", "IPSW", "PSAS", "KW-Logit", "KW-MOB", "KW-RF", "KW-XTREE", "KW-GBM", "KW-mboost")
-round(bias.r, 3)
-
-# Covariate balance before and after adjustment (KW)
-psa_dat$educ_f <- as.factor(psa_dat$educ)
-psa_dat$health_f <- as.factor(psa_dat$health)
-covars2 <- c("age", "sex_f", "race_f", "martl_f", "educ_f", "bmi", "smk1_f", "phys", "health_f")
-tab_post_adjust_smd <- data.frame(matrix(ncol = n_p2+1, nrow = 19))
-aarp_syn$kw.0 <- aarp_syn$elig_wt
-p_vars <- list()
-
-for(i in 0:n_p2){
-  psa_dat$wt_kw <- psa_dat$wt
-  psa_dat$wt_kw[psa_dat$trt == 1] <- eval(parse(text = paste0("aarp_syn$kw.", i)))
-  tab_post_adjust <- bal.tab(psa_dat[, covars], treat = psa_dat$trt, weights = psa_dat$wt_kw, s.d.denom = "pooled", binary = "std")
-  tab_post_adjust_smd[, i+1] <- abs(tab_post_adjust$Balance[, "Diff.Adj"])
-  for(var in covars2){
-    p_vars[[paste0(i, var)]] <- bal.plot(psa_dat[, covars2], treat = psa_dat$trt, weights = psa_dat$wt_kw, var.name = var) +
-      labs(title = "", subtitle = "")
+# Set try-out values and prepare loop
+tune_mincriterion <- c(0.99, 0.95, 0.9)
+psa_dat$wt_kw <- psa_dat$elig_wt
+p_scores <- NULL
+smds <- rep(NA, length(tune_mincriterion))
+for(k in 1:200){
+  p_nrow = ifelse(k<200,2700,1714)
+  p_scores.tmp  <- data.frame(matrix(ncol = length(tune_mincriterion), nrow = p_nrow))
+  # Loop over try-out values
+  for (i in seq_along(tune_mincriterion)){ 
+    psa_dat$trt_f = as.factor(psa_dat$trt_f)
+    minc <- tune_mincriterion[i]
+    crf <- cforest(trt_f ~ age+sex_f+race_f+martl_f+educ+bmi+smk1_f+phys+health,
+                   data = psa_dat,
+                   control = ctree_control(mincriterion = minc),
+                   ntree = 100)
+    is.factor(psa_dat$trt_f)
+    p_scores.tmp[, i] <- predict(crf, newdata = psa_dat[((k-1)*2700+1):min(k*2700, nrow(psa_dat)),], type = "prob")[, 2]
   }
+  p_scores = rbind(p_scores, p_scores.tmp)
 }
 
-p_ps_u <- list()
-p_ps_w <- list()
-
-for(i in 1:n_p2){
-  psa_dat$wt_kw <- psa_dat$wt
-  p_ps_u[[i]] <- bal.plot(psa_dat, treat = psa_dat$trt, weights = psa_dat$wt_kw, var.name = paste0("ps.", i)) +
-    labs(title = "", subtitle = "")
-  psa_dat$wt_kw[psa_dat$trt == 1] <- eval(parse(text = paste0("aarp_syn$kw.", i)))
-  p_ps_w[[i]] <- bal.plot(psa_dat, treat = psa_dat$trt, weights = psa_dat$wt_kw, var.name = paste0("ps.", i)) +
-    labs(title = "", subtitle = "")
+for(i in 1:3){
+  p_score_c <- p_scores[psa_dat$trt == 1, i]
+  p_score_s <- p_scores[psa_dat$trt == 0, i]
+  # Calculate KW weights
+  aarp_syn$kw <- kw.wt(p_score.c = p_score_c, p_score.s = p_score_s, svy.wt = nhis_m$elig_wt, Large = T)$pswt
+  # Calculate covariate balance
+  psa_dat$wt_kw[psa_dat$trt == 1] <- aarp_syn$kw
+  smds[i] <- mean(abs(bal.tab(psa_dat[, covars], treat = psa_dat$trt, weights = psa_dat$wt_kw,
+                              s.d.denom = "pooled", binary = "std", method = "weighting")$Balance[, "Diff.Adj"]))
+  # Save KW weights of current iteration 
+  names(aarp_syn)[dim(aarp_syn)[2]] <- paste0("kw.crf.", i)
+  print(paste0("crf", i))
 }
+# Select KW weights with best average covariate bala
+best <- which.min(smds)
+names(aarp_syn)[names(aarp_syn) == paste0("kw.crf.", best)] <- "kw.7"
+aarp_syn[, grep("kw.crf", names(aarp_syn))] <- NULL
+# Save propensity scores
+psa_dat$ps.7 <- p_scores[, best]
 
-# Covariate balance plots (KW)
-p0 <- grid.arrange(grobs = p_vars[c("0age", "0sex_f", "0race_f", "0martl_f", "0educ_f", "0bmi", "0smk1_f", "0phys", "0health_f")], top = "Distributional Balance: Unadjusted")
-p1 <- grid.arrange(grobs = p_vars[c("1age", "1sex_f", "1race_f", "1martl_f", "1educ_f", "1bmi", "1smk1_f", "1phys", "1health_f")], top = "Distributional Balance: KW with logit regression")
-p2 <- grid.arrange(grobs = p_vars[c("2age", "2sex_f", "2race_f", "2martl_f", "2educ_f", "2bmi", "2smk1_f", "2phys", "2health_f")], top = "Distributional Balance: KW with MOB")
-p3 <- grid.arrange(grobs = p_vars[c("3age", "3sex_f", "3race_f", "3martl_f", "3educ_f", "3bmi", "3smk1_f", "3phys", "3health_f")], top = "Distributional Balance: KW with RF")
-p4 <- grid.arrange(grobs = p_vars[c("4age", "4sex_f", "4race_f", "4martl_f", "4educ_f", "4bmi", "4smk1_f", "4phys", "4health_f")], top = "Distributional Balance: KW with XTREE")
-p5 <- grid.arrange(grobs = p_vars[c("5age", "5sex_f", "5race_f", "5martl_f", "5educ_f", "5bmi", "5smk1_f", "5phys", "5health_f")], top = "Distributional Balance: KW with GBM")
-p6 <- grid.arrange(grobs = p_vars[c("6age", "6sex_f", "6race_f", "6martl_f", "6educ_f", "6bmi", "6smk1_f", "6phys", "6health_f")], top = "Distributional Balance: KW with mboost")
 
-# Propensity score plots (KW)
-p7 <- grid.arrange(grobs = p_ps_u, top = "Distribution of propensity scores: Weighted NHIS, unweighted AARP")
-p8 <- grid.arrange(grobs = p_ps_w, top = "Distribution of propensity scores: Weighted NHIS, KW-weighted AARP")
+
+
+
+
+#################################################
+################################################
+# relative difference of Weighted Estimates of 9-year mortality
+mtlty_age = output(aarp_syn =aarp_syn, nhis_m,mtlty,byvar="age_c4", d=T)$reldiff
+mtlty_age = cbind(mtlty_age, apply(abs(mtlty_age)[,-1],1,mean))
+colnames(mtlty_age) = c("Overall", "50-54", "55-59", "60-64", "64+", "Average")
+round(mtlty_age, 2)
+
+
+
+
+
