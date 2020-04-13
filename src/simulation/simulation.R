@@ -5,6 +5,7 @@ library(ranger)
 library(partykit)
 library(gbm)
 library(mboost)
+library(CBPS)
 
 twoway_int = function(x, y){
   paste_fun = function(x, y) paste0("bols(", x, ", by = ", y, ", intercept = FALSE)")
@@ -127,12 +128,12 @@ fm.p = update(as.formula(Formulas[1]), ~.^2)
 NSIMU=5
 n_c = 5000
 n_s = 5000
-est = array(0, c(NSIMU, 15, length(Formulas)),
+est = array(0, c(NSIMU, 16, length(Formulas)),
             dimnames = list(c(1:NSIMU), c("cht", "cht_w", "svy_w", 
                                           "ipsw_t", "ipsw_m", "ipsw_i", 
                                           "kw_t", "kw_m", "kw_i", "kw_mob", 
                                           "kw_rf", "kw_crf", "kw_xtree", 
-                                          "kw_gbm", "kw_mboost"),
+                                          "kw_gbm", "kw_mboost", "kw_cbps"),
                             paste0(rep("model", 10), c(1:10), sep=""))
 )
 wt_m = est
@@ -217,7 +218,7 @@ for (k in 1:10){
       wt_v[simu,3+i, k] = var(ipsw[,i])
     }
     # Kernel weighting method
-    kw = as.data.frame(matrix(0, n_c, 9))
+    kw = as.data.frame(matrix(0, n_c, 10))
     ###########################################################################
     ##                      True propensity score model                      ##                    
     ###########################################################################
@@ -579,6 +580,25 @@ for (k in 1:10){
     wt_v[simu,15, k] = var(kw[,9])                      
     est[simu, 15, k] = sum(samp.c$y*kw[, 9])/sum(kw[, 9])
     samp.c[, grep("kw.mboost", names(samp.c))] <- NULL
+    ###########################################################################
+    ##              Covariate Balancing Propensity Score (CBPS)              ##
+    ###########################################################################
+    #svyds = svydesign(ids =~1, weight = rep(1, n_c+n_s), data = psa_dat)
+    cbps = CBPS(trt~w1+w2+w3+w4+w5+w6+w7, psa_dat, method = "over")
+    p_score = cbps$fitted.values
+    # Propensity scores for the cohort
+    p_score.c = cbind(p_score.c, cbps = p_score[psa_dat[,rsp_name]==1])
+    # Propensity scores for the survey sample
+    p_score.s = cbind(p_score.s, cbps = p_score[psa_dat[,rsp_name]==0])
+    kw[,10] = kw.wt(p_score.c = p_score.c[,10], p_score.s = p_score.s[,10], 
+                   svy.wt= samp.s$wt, Large=F)$pswt
+    psa_dat$wt_kw[psa_dat$trt == 1] <- kw[,10]
+    smd_all[simu,16, k] = mean(abs(bal.tab(psa_dat[, covars], treat = psa_dat$trt, weights = psa_dat$wt_kw, 
+                                          s.d.denom = "pooled", binary = "std", method = "weighting")$Balance[, "Diff.Adj"]))
+    wt_m[simu,16, k] = mean(kw[,10])
+    wt_v[simu,16, k] = var(kw[,10])                      
+    est[simu, 16, k] = sum(samp.c$y*kw[, 10])/sum(kw[, 10])
+
     print(paste0("simu", simu))
   }
   print(paste0("model", k))
