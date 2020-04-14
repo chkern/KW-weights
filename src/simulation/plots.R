@@ -13,25 +13,25 @@ est$Wt_var = wt_v[,4]
 est$CV = sqrt(wt_v[,4])/wt_m[,4]
 est$Smd = smd_all[,4]
 names(est)[1:4]=c("Simu", "Method", "Model", "Est")
-est = est[!(est$Method%in%c("cht", "cht_w", "svy_w","ipsw_m", "ipsw_t", "kw_xtree")|est$Model%in%c("model2", "model4", "model5")),]
+est = est[!(est$Method%in%c("cht", "cht_w", "svy_w","kw_rf", "ipsw_t", "kw_xtree")|est$Model%in%c("model2", "model4", "model5")),]
 
 est$Method = factor(est$Method,
                     levels = c(#"cht", "cht_w", "ipsw_t", 
                                "kw_t", "kw_m", "kw_i",
-                               "kw_mob", "kw_rf", "kw_crf", "kw_gbm", "kw_mboost", "ipsw_i"),
+                               "kw_mob", "kw_crf", "kw_gbm", "kw_mboost", "ipsw_m", "ipsw_i"),
                     labels = c(#"Cht (naïve)", "Cht (wtd)", "IPSW (true)", 
-                               "KW (true)", "KW (main)", "KW (pairwise)", "KW (MOB)", "KW (RF)", 
-                               "KW (CRF)", "KW (GBM)","KW (MBoost)","IPSW (pairwise)")
+                               "KW (true)", "KW (main)", "KW (pairwise)", "KW (MOB)", 
+                               "KW (CRF)", "KW (GBM)","KW (MBoost)", "IPSW (main)", "IPSW (pairwise)")
                   )
 est$Model = factor(est$Model,
                    levels = paste0("model", c(1, 3, 6:10)),
-                   labels = c("M(0, 0, 0)", 
-                              "M(0, 1, 0)",
-                              "M(1, 0, 0)", 
-                              "M(1, 1, 0)",
-                              "M(2, 2, 0)", 
-                              "M(0, 0, 1)",
-                              "M(0, 0, 2)"))
+                   labels = c("A (A0, L0, V0)", 
+                              "B (A0, L1, V0)",
+                              "C (A1, L0, V0)", 
+                              "D (A1, L1, V0)",
+                              "E (A2, L2, V0)", 
+                              "F (A0, L0, V1)",
+                              "G (A0, L0, V2)"))
 
 est_stat = data.frame(bias = aggregate(est$Est, list(est$Model, est$Method), mean)[,3]-m.pop_y,
                       evar = aggregate(est$Est, list(est$Model, est$Method), var)[,3]*1e4)
@@ -79,12 +79,12 @@ table(est_stat_a$Model, useNA = "ifany")
 # Estimate by method and model (boxplots over simu)
 
 ggplot(aes(x = Model, y = Est), data = est) +
-  geom_boxplot(outlier.size = 0.1) +
+  geom_boxplot(outlier.size = 0.1) + 
   stat_summary(fun.y=mean, geom="point", shape=20, size=2, color="blue", fill="blue")+
   facet_wrap(~ Method, ncol = 3) +
   geom_hline(yintercept = m.pop_y, color="red") +
   coord_flip(ylim = c(0.1, 0.25)) +
-  labs(x = "", y = "") +
+  labs(x = "", y = "Point estimate of Finite Population Mean") +
   scale_x_discrete(limits = rev(levels(est$Model))) +
   scale_fill_manual(guide="none")+
   theme_bw() +
@@ -100,7 +100,7 @@ ggplot(est_stat_a) +
   facet_wrap(~ Method, ncol = 3) +
   geom_hline(yintercept = 0) +
   coord_flip() +
-  labs(x = "", y = "") +
+  labs(x = "", y = "Mean Squared Error of Population Mean Estimate") +
   scale_x_discrete(limits = rev(levels(est_stat_a$Model))) +
   scale_fill_manual(values=c("grey40", "black"))+
   scale_y_continuous(limit = c(0, 8.5), 
@@ -120,12 +120,12 @@ ggplot(est_stat_a) +
   facet_wrap(~ Method, ncol = 3) +
   geom_hline(yintercept = 0) +
   coord_flip() +
-  labs(x = "", y = "") +
+  labs(x = "", y = "Coefficient of Variation of Pseudo Weights") +
   scale_x_discrete(limits = rev(levels(est_stat_a$Model))) +
   scale_fill_manual(values=c("grey40", "black"))+
-  scale_y_continuous(limit = c(0,4.5),
-                     breaks = c(1:2, seq(3, 4, 0.16)),
-                     labels=c(1:3, rep("", 5), 9))+  
+  scale_y_continuous(limit = c(0,3.2),
+                     breaks = c(1:3),
+                     labels=c(1:3))+  
   theme_bw() +
   theme(axis.text.x = element_text(vjust=1),
         legend.position = "none")
@@ -138,7 +138,7 @@ ggplot(est_stat_a) +
   facet_wrap(~ Method, ncol = 3) +
   geom_hline(yintercept = 0) +
   coord_flip() +
-  labs(x = "", y = "") +
+  labs(x = "", y = "Averaged Standardized Mean Difference across Covariates") +
   scale_x_discrete(limits = rev(levels(est_stat_a$Model))) +
   scale_fill_manual(values=c("grey40", "black"))+
   scale_y_continuous(limit = c(0,6.7),
