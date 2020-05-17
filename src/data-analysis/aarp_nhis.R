@@ -7,6 +7,7 @@ library(ranger)
 library(partykit)
 library(gbm)
 library(mboost)
+library(CBPS)
 
 # Set directory
 #setwd("C:/Users/wangl29/Box/Research/Lingxiao Projects/Machine learning methods/Nonprobability weighting")
@@ -392,6 +393,23 @@ aarp_syn[, grep("kw.crf", names(aarp_syn))] <- NULL
 # Save propensity scores
 psa_dat$ps.7 <- p_scores[, best]
 
+
+###########################################################################
+##              Covariate Balancing Propensity Score (CBPS)              ##
+###########################################################################
+
+cbps = CBPS(trt_f ~ age+sex_f+race_f+martl_f+educ+bmi+smk1_f+phys+health, 
+            psa_dat, 
+            method = "over")
+p_score = cbps$fitted.values
+# Propensity scores for the cohort
+p_score_c = p_score[psa_dat$trt == 1]
+# Propensity scores for the survey sample
+p_score_s = p_score[psa_dat$trt == 0]
+# calculate KW weights
+aarp_syn$kw.8 = kw.wt(p_score.c = p_score_c, p_score.s = p_score_s, svy.wt = nhis_m$elig_wt, Large=T)$pswt
+# Save propensity scores
+psa_dat$ps.8 = p_score
 
 
 
